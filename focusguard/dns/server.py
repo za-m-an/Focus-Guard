@@ -59,6 +59,7 @@ class DNSServer:
         flow_callback: Callable[[str, str, int, str, str], None] | None = None,
         event_bus: Any = None,
         device_tracker: Any = None,
+        packet_monitor: Any = None,
     ) -> None:
         self.sinkhole = sinkhole
         self.resolver = resolver
@@ -69,6 +70,7 @@ class DNSServer:
         self.flow_callback = flow_callback
         self.event_bus = event_bus
         self.device_tracker = device_tracker
+        self.packet_monitor = packet_monitor
         self._is_running = False
         self._udp_transports: list[asyncio.DatagramTransport] = []
         self._tcp_servers: list[asyncio.Server] = []
@@ -103,6 +105,22 @@ class DNSServer:
                 self.device_tracker.record_query(client_ip, is_blocked=is_blocked)
             except Exception:
                 pass
+
+        # Ingest into packet monitoring subsystem
+        if self.packet_monitor:
+            try:
+                self.packet_monitor.ingest_dns_event(
+                    client_ip=client_ip,
+                    server_ip=self.host_v4 if self.host_v4 != "0.0.0.0" else "127.0.0.1",
+                    dst_port=self.port,
+                    protocol="UDP",
+                    qname=qname,
+                    is_blocked=is_blocked,
+                    reason=reason,
+                )
+            except Exception:
+                pass
+
 
         # Identify service or bypass attempt for enriched observability
         service_name: str | None = None

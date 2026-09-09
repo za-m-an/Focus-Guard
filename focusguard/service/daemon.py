@@ -95,7 +95,9 @@ class FocusGuardDaemon:
             flow_callback=on_flow_recorded,
             event_bus=self.event_bus,
             device_tracker=self.device_tracker,
+            packet_monitor=self.packet_monitor,
         )
+
 
         self.diagnostics = DiagnosticsRunner(
             self.policy_engine,

@@ -105,3 +105,22 @@ def test_monitor_device_correlation():
     pkt = engine.process_raw_frame(frame)
     assert pkt is not None
     assert pkt.device_name == "MacBook-Air"
+
+
+def test_monitor_ingest_dns_event_and_recent_replay():
+    engine = PacketMonitorEngine()
+    pkt = engine.ingest_dns_event(
+        client_ip="192.168.1.15",
+        qname="youtube.com",
+        is_blocked=True,
+        reason="Blocklist",
+    )
+    assert pkt is not None
+    assert pkt.src_ip == "192.168.1.15"
+    assert pkt.policy_action == "MATCH"
+    assert "youtube.com" in (pkt.policy_match or "")
+
+    recent = engine.get_recent_packets(limit=5)
+    assert len(recent) == 1
+    assert recent[0].id == pkt.id
+

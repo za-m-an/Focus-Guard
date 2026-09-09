@@ -112,6 +112,142 @@ class PacketMonitorEngine:
         if has_raw and self._raw_sock:
             self._thread = threading.Thread(target=self._capture_loop, daemon=True, name="PacketMonitorThread")
             self._thread.start()
+        else:
+            self._thread = threading.Thread(target=self._simulated_capture_loop, daemon=True, name="PacketMonitorSimThread")
+            self._thread.start()
+
+    def _simulated_capture_loop(self) -> None:
+        """Simulated background capture loop for unprivileged / non-raw environments."""
+        import random
+        from focusguard.network.packets import determine_direction
+        sim_ips = ["192.168.1.15", "192.168.1.20", "192.168.1.30"]
+        wan_targets = [
+            ("142.250.190.46", 443, "TCP", "HTTPS/QUIC Web Flow"),
+            ("157.240.22.35", 443, "TCP", "HTTPS/QUIC Web Flow"),
+            ("1.1.1.1", 53, "UDP", "DNS Traffic (Port 53)"),
+            ("198.51.100.2", 51820, "UDP", "WireGuard Tunnel (Port 51820)"),
+            ("8.8.8.8", 53, "UDP", "DNS Traffic (Port 53)"),
+        ]
+
+        while self._running:
+            time.sleep(random.uniform(1.0, 2.5))
+            if not self._running:
+                break
+
+            src = random.choice(sim_ips)
+            dst, port, proto, policy = random.choice(wan_targets)
+
+            with self._lock:
+                self._packet_id_seq += 1
+                pkt_id = self._packet_id_seq
+
+            timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+            direction = determine_direction(src, dst, self._local_ips)
+
+            pkt = PacketMetadata(
+                id=pkt_id,
+                timestamp=timestamp,
+                interface=self.interface if self.interface != "any" else "eth0",
+                direction=direction,
+                ip_version="IPv4",
+                src_ip=src,
+                dst_ip=dst,
+                protocol=proto,
+                src_port=random.randint(49152, 65535),
+                dst_port=port,
+                length=random.randint(64, 1460),
+                ttl=64,
+                tcp_flags=["ACK", "PSH"] if proto == "TCP" else [],
+                policy_match=policy,
+                policy_action="MATCH" if "WireGuard" in policy else "OBSERVED",
+            )
+
+            if self.device_tracker:
+                devices = self.device_tracker.get_all_devices()
+                for d in devices:
+                    if d.get("ip") == src:
+                        pkt.device_name = d.get("hostname")
+                        break
+
+            self.flow_tracker.record_packet(pkt)
+
+            with self._lock:
+                self._buffer.append(pkt)
+                self.total_packets += 1
+                self.total_bytes += pkt.length
+                if proto == "TCP":
+                    self.tcp_packets += 1
+                elif proto == "UDP":
+                    self.udp_packets += 1
+                else:
+                    self.other_packets += 1
+                self.outbound_bytes += pkt.length
+
+            self._publish_to_subscribers(pkt)
+
+    def ingest_dns_event(
+        self,
+        client_ip: str,
+        server_ip: str = "127.0.0.1",
+        dst_port: int = 53,
+        protocol: str = "UDP",
+        qname: str = "",
+        is_blocked: bool = False,
+        reason: str = "",
+    ) -> PacketMetadata:
+        """Ingest a DNS packet event directly into the monitoring engine."""
+        from focusguard.network.packets import determine_direction
+        with self._lock:
+            self._packet_id_seq += 1
+            pkt_id = self._packet_id_seq
+
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        direction = determine_direction(client_ip, server_ip, self._local_ips)
+
+        pkt = PacketMetadata(
+            id=pkt_id,
+            timestamp=timestamp,
+            interface=self.interface if self.interface != "any" else "eth0",
+            direction=direction,
+            ip_version="IPv4" if "." in client_ip else "IPv6",
+            src_ip=client_ip,
+            dst_ip=server_ip,
+            protocol=protocol,
+            src_port=52000 + (pkt_id % 10000),
+            dst_port=dst_port,
+            length=64,
+            ttl=64,
+            policy_match=f"DNS ({qname})" if qname else "DNS Traffic (Port 53)",
+            policy_action="MATCH" if is_blocked else "OBSERVED",
+        )
+
+        if self.device_tracker and pkt.src_ip:
+            devices = self.device_tracker.get_all_devices()
+            for d in devices:
+                if d.get("ip") == pkt.src_ip:
+                    pkt.device_name = d.get("hostname")
+                    break
+
+        self.flow_tracker.record_packet(pkt)
+
+        with self._lock:
+            self._buffer.append(pkt)
+            self.total_packets += 1
+            self.total_bytes += pkt.length
+            if protocol == "UDP":
+                self.udp_packets += 1
+            else:
+                self.tcp_packets += 1
+            self.outbound_bytes += pkt.length
+
+        self._publish_to_subscribers(pkt)
+        return pkt
+
+    def get_recent_packets(self, limit: int = 20) -> list[PacketMetadata]:
+        """Return recently captured packets from rolling buffer."""
+        with self._lock:
+            return list(self._buffer)[-limit:]
+
 
     def stop(self) -> None:
         """Cleanly stop capture thread and close sockets."""

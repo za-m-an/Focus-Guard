@@ -291,6 +291,20 @@ class IPCServer:
         writer.write(init_resp)
         await writer.drain()
 
+        # Replay recent buffered packets
+        for pkt in self.packet_monitor.get_recent_packets(limit=10):
+            if device_filter and (pkt.src_ip != device_filter and pkt.dst_ip != device_filter):
+                continue
+            if proto_filter and not pkt.protocol.upper().startswith(proto_filter):
+                continue
+            if port_filter and (pkt.src_port != port_filter and pkt.dst_port != port_filter):
+                continue
+
+            payload = json.dumps({"packet": pkt.to_dict()}).encode("utf-8") + b"\n"
+            writer.write(payload)
+            await writer.drain()
+
+
         try:
             while True:
                 try:

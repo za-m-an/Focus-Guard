@@ -98,6 +98,14 @@ class DeviceTracker:
         return devices
 
     def active_device_count(self) -> int:
-        """Count how many devices were active in the last 15 minutes."""
+        """Count devices active in the last 15 minutes."""
         with self._lock:
             return sum(1 for d in self._devices.values() if d.is_active)
+
+    def set_device_hostname(self, ip: str, hostname: str) -> None:
+        """Explicitly set or override a friendly device name."""
+        with self._lock:
+            if ip in self._devices:
+                self._devices[ip].hostname = hostname
+            else:
+                self._devices[ip] = DeviceInfo(ip=ip, hostname=hostname)

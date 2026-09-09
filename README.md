@@ -315,7 +315,114 @@ focusguard stats --session
 
 ---
 
+## Packet-Level Monitoring & Header Inspection
+
+In addition to DNS-layer observability, FocusGuard features an integrated **packet-level monitoring and inspection subsystem** capable of capturing wire frames that traverse the DietPi network appliance.
+
+### 1. Live Packet Monitor (`focusguard packet-monitor`)
+Observe network packets in real-time, inspect direction (`LAN → WAN`, `WAN → LAN`, `LOCAL`), protocol headers, ports, and policy correlation:
+
+```bash
+focusguard packet-monitor
+```
+```text
+FOCUSGUARD LIVE PACKET MONITOR
+────────────────────────────────────────────────────────────────────────────
+TIME     IFACE  DIR        SOURCE                 DESTINATION            PROTO   ACTION
+────────────────────────────────────────────────────────────────────────────
+21:31:04 eth0   LAN → WAN  192.168.1.15:52144   → 142.250.190.46:443     TCP     OBSERVED [HTTPS/QUIC Web Flow]
+21:31:04 eth0   LAN → WAN  192.168.1.15:41000   → 198.51.100.2:51820     UDP     MATCH [WireGuard Tunnel (Port 51820)]
+21:31:05 eth0   WAN → LAN  142.250.190.46:443   → 192.168.1.15:52144     TCP     OBSERVED [HTTPS/QUIC Web Flow]
+21:31:05 eth0   LAN → WAN  192.168.1.20:43122   → 1.1.1.1:53             UDP     OBSERVED [DNS Traffic (Port 53)]
+────────────────────────────────────────────────────────────────────────────
+```
+
+#### Verbose Inspection:
+Add `-v` or `--verbose` to inspect TCP flags (SYN, ACK, PSH, FIN, RST) and packet length on each line:
+```bash
+focusguard packet-monitor --verbose
+```
+
+#### Stream Filtering:
+- Filter by device IP: `focusguard packet-monitor --device 192.168.1.15`
+- Filter by protocol: `focusguard packet-monitor --protocol tcp`
+- Filter by port: `focusguard packet-monitor --port 443`
+
+---
+
+### 2. Packet Traffic Statistics (`focusguard packet-stats`)
+Inspect aggregate packet counts, byte volumes, protocol distribution, and active connection flows:
+
+```bash
+focusguard packet-stats
+```
+```text
+FOCUSGUARD PACKET TRAFFIC STATISTICS
+════════════════════════════════════════════════════
+  Packets Observed:  128,421
+  Bytes Observed:    84.2 MB (88,290,144 B)
+  Active Flows:      84
+
+  Protocol Distribution:
+  ──────────────────────────────────────────────
+    • TCP:            76.4%  (98,113 pkts)
+    • UDP:            21.8%  (27,995 pkts)
+    • ICMP/ICMPv6:     1.1%  (1,412 pkts)
+    • Other / ARP:     0.7%  (901 pkts)
+
+  Directional Volume:
+  ──────────────────────────────────────────────
+    • Inbound:       42.1 MB
+    • Outbound:      42.1 MB
+════════════════════════════════════════════════════
+```
+
+---
+
+### 3. Detailed Packet Inspection (`focusguard packet inspect`)
+Inspect all decoded headers of a specific packet or the most recent frame:
+
+```bash
+# Inspect latest packet
+focusguard packet inspect
+
+# Inspect specific packet with payload preview
+focusguard packet inspect --id 42 --hex
+```
+```text
+Packet Header Inspection (ID #42)
+────────────────────────────────────────────────────
+  Timestamp:     21:31:04.382
+  Interface:     eth0
+  Direction:     LAN → WAN
+  IP Version:    IPv4
+
+  Source:
+    IP:          192.168.1.15
+    Port:        52144
+    Device:      MacBook-Pro
+
+  Destination:
+    IP:          142.250.190.46
+    Port:        443
+
+  Protocol:      TCP
+  Packet Length: 74 bytes
+  TTL / Hop:     64
+  TCP Flags:     SYN
+  Policy Match:  HTTPS/QUIC Web Flow
+  Policy Action: OBSERVED
+
+  Raw Payload Preview (Hex & ASCII):
+  ──────────────────────────────────────────────────
+  45 00 00 4a d4 31 40 00 40 06 ... | E..J.1@.@...
+────────────────────────────────────────────────────
+```
+
+---
+
 ## Automatic Network Enforcement & Gateway Mode
+
 
 To automatically enforce policy on **any new device that joins your home network** without manually configuring DNS on every device:
 
@@ -361,10 +468,12 @@ FocusGuard Appliance Console
 11. Manage Distraction Services
 12. Discovered Network Devices
 13. Bypass Defense & VPN Resistance
-14. View Audit Logs
-15. Exit
+14. Packet Monitor & Traffic Statistics
+15. View Audit Logs
+16. Exit
 ─────────────────────────────────────────────
-Select an option [1-15]: 
+Select an option [1-16]: 
+
 
 ```
 

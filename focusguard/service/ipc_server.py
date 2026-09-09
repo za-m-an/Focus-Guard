@@ -35,6 +35,7 @@ class IPCServer:
         log_store: EventLogStore | None = None,
         gateway_manager: Any = None,
         device_tracker: Any = None,
+        packet_monitor: Any = None,
     ) -> None:
         self.policy_engine = policy_engine
         self.diagnostics_runner = diagnostics_runner
@@ -42,9 +43,11 @@ class IPCServer:
         self.log_store = log_store or (policy_engine.log_store if hasattr(policy_engine, "log_store") else None)
         self.gateway_manager = gateway_manager
         self.device_tracker = device_tracker
+        self.packet_monitor = packet_monitor
         self.socket_path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
         self._server: asyncio.Server | None = None
         self._is_unix = hasattr(socket, "AF_UNIX")
+
 
     def _ensure_socket_dir(self) -> None:
         try:
@@ -67,7 +70,10 @@ class IPCServer:
                 status = self.policy_engine.get_status()
                 if self.gateway_manager:
                     status["gateway"] = self.gateway_manager.get_gateway_status()
+                if self.packet_monitor:
+                    status["packet_monitor"] = self.packet_monitor.get_status()
                 return {"ok": True, "result": status}
+
 
             elif action == "add":
                 domain = params.get("domain", "")
@@ -186,6 +192,27 @@ class IPCServer:
                     return {"ok": success, "result": msg, "error": None if success else msg}
                 return {"ok": False, "error": "Gateway manager not initialized."}
 
+            elif action == "packet_status":
+                if self.packet_monitor:
+                    return {"ok": True, "result": self.packet_monitor.get_status()}
+                return {"ok": True, "result": {"status": "NOT_INITIALIZED"}}
+
+            elif action == "packet_stats":
+                if self.packet_monitor:
+                    return {"ok": True, "result": self.packet_monitor.get_stats()}
+                return {"ok": True, "result": {}}
+
+            elif action == "packet_inspect":
+                pkt_id = params.get("id")
+                if self.packet_monitor:
+                    if pkt_id is not None:
+                        res = self.packet_monitor.get_packet_by_id(int(pkt_id))
+                    else:
+                        res = self.packet_monitor.get_latest_packet()
+                    return {"ok": True, "result": res}
+                return {"ok": True, "result": None}
+
+
             else:
                 return {"ok": False, "error": f"Unknown action '{action}'"}
 
@@ -239,6 +266,56 @@ class IPCServer:
         finally:
             self.event_bus.unsubscribe(queue)
 
+    async def _stream_packet_monitor(
+        self, params: dict[str, Any], reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Stream real-time packet metadata to the client."""
+        if not self.packet_monitor:
+            writer.write(json.dumps({"ok": False, "error": "Packet monitor not initialized."}).encode("utf-8") + b"\n")
+            await writer.drain()
+            return
+
+        device_filter = params.get("device", "").strip()
+        proto_filter = params.get("protocol", "").strip().upper()
+        port_filter = params.get("port")
+        if port_filter is not None:
+            try:
+                port_filter = int(port_filter)
+            except ValueError:
+                port_filter = None
+
+        queue = self.packet_monitor.subscribe(maxsize=200)
+
+        # Send initial confirmation
+        init_resp = json.dumps({"ok": True, "streaming": True}).encode("utf-8") + b"\n"
+        writer.write(init_resp)
+        await writer.drain()
+
+        try:
+            while True:
+                try:
+                    pkt = await asyncio.wait_for(queue.get(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    writer.write(b'{"heartbeat": true}\n')
+                    await writer.drain()
+                    continue
+
+                # Apply filters
+                if device_filter and (pkt.src_ip != device_filter and pkt.dst_ip != device_filter):
+                    continue
+                if proto_filter and not pkt.protocol.upper().startswith(proto_filter):
+                    continue
+                if port_filter and (pkt.src_port != port_filter and pkt.dst_port != port_filter):
+                    continue
+
+                payload = json.dumps({"packet": pkt.to_dict()}).encode("utf-8") + b"\n"
+                writer.write(payload)
+                await writer.drain()
+        except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+            pass
+        finally:
+            self.packet_monitor.unsubscribe(queue)
+
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
@@ -261,6 +338,10 @@ class IPCServer:
                 if action == "monitor":
                     await self._stream_monitor(params, reader, writer)
                     break
+                elif action == "packet_monitor":
+                    await self._stream_packet_monitor(params, reader, writer)
+                    break
+
 
                 response = await self.handle_request(request)
                 out_bytes = json.dumps(response).encode("utf-8") + b"\n"

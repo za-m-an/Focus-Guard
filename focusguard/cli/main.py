@@ -18,6 +18,10 @@ from focusguard.cli.formatter import (
     format_bypass_status,
     format_devices_table,
     format_services_card,
+    format_packet_stream_row,
+    format_packet_stats,
+    format_packet_detail,
+    format_packet_status,
     BOLD,
     CYAN,
     GREEN,
@@ -26,6 +30,7 @@ from focusguard.cli.formatter import (
     RESET,
     DIM,
 )
+
 from focusguard.cli.interactive import run_interactive_menu
 from focusguard.version import __version__
 
@@ -108,6 +113,28 @@ def build_parser() -> argparse.ArgumentParser:
     gw_parser = subparsers.add_parser("gateway", help="Manage transparent network redirection and gateway mode")
     gw_parser.add_argument("action", choices=["status", "enable", "disable"], nargs="?", default="status", help="Gateway action (status, enable, disable)")
 
+    # packet-monitor
+    pkt_mon_parser = subparsers.add_parser("packet-monitor", help="Stream live packet metadata and header inspection")
+    pkt_mon_parser.add_argument("--device", help="Filter by client device IP")
+    pkt_mon_parser.add_argument("--protocol", help="Filter by protocol (TCP, UDP, ICMP)")
+    pkt_mon_parser.add_argument("--port", type=int, help="Filter by port number")
+    pkt_mon_parser.add_argument("-v", "--verbose", action="store_true", help="Show TCP flags, packet lengths, and detailed fields")
+
+    # packet-stats
+    subparsers.add_parser("packet-stats", help="Display packet traffic statistics, byte volume, and protocol distribution")
+
+    # packet-status
+    subparsers.add_parser("packet-status", help="Display operational status of the packet monitoring engine")
+
+    # packet (group)
+    pkt_group_parser = subparsers.add_parser("packet", help="Packet-level inspection and traffic analysis")
+    pkt_sub = pkt_group_parser.add_subparsers(dest="packet_subcommand", help="Packet subcommand")
+    inspect_sub = pkt_sub.add_parser("inspect", help="Inspect detailed headers of a specific packet or latest packet")
+    inspect_sub.add_argument("--id", type=int, help="Packet ID to inspect")
+    inspect_sub.add_argument("--hex", action="store_true", help="Display safe raw payload hex and ASCII preview")
+    pkt_sub.add_parser("stats", help="Display packet traffic statistics")
+    pkt_sub.add_parser("status", help="Display packet monitoring engine status")
+
     # network
     subparsers.add_parser("network", help="Inspect network interfaces and router DNS setup guide")
 
@@ -115,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("menu", help="Launch interactive terminal menu")
 
     return parser
+
 
 
 def cmd_monitor(client: FocusGuardClient, args: argparse.Namespace) -> None:
@@ -273,11 +301,49 @@ def cmd_network(client: FocusGuardClient) -> None:
     print("    client devices will randomly bypass FocusGuard!")
     print(" 5. If IPv6 is active, configure DHCPv6 / RDNSS with DietPi's IPv6 address,")
     print("    or disable IPv6 on the router if you only use IPv4.")
-    print(" 6. Save router settings and reconnect client devices (toggle Wi-Fi).")
-    print(f"{CYAN}{'═' * 52}{RESET}\n")
+def cmd_packet_monitor(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    """Run live packet header and traffic flow monitor."""
+    print(f"\n{CYAN}{BOLD}FOCUSGUARD LIVE PACKET MONITOR{RESET}")
+    print(f"{CYAN}{'─' * 76}{RESET}")
+    print(f"{BOLD}{'TIME':<8} {'IFACE':<6} {'DIR':<10} {'SOURCE':<22}   {'DESTINATION':<22} {'PROTO':<7} {'ACTION'}{RESET}")
+    print(f"{CYAN}{'─' * 76}{RESET}")
+    print(f"{DIM}Streaming live packet metadata (Press Ctrl+C to stop)...{RESET}\n")
+
+    params = {
+        "device": getattr(args, "device", "") or "",
+        "protocol": getattr(args, "protocol", "") or "",
+        "port": getattr(args, "port", None),
+    }
+
+    try:
+        for pkt in client.stream_packet_monitor(params):
+            print(format_packet_stream_row(pkt, verbose=getattr(args, "verbose", False)))
+    except KeyboardInterrupt:
+        print(f"\n{CYAN}Packet monitor closed.{RESET}\n")
+
+
+def cmd_packet_stats(client: FocusGuardClient) -> None:
+    stats = client.send_command("packet_stats")
+    print(format_packet_stats(stats))
+
+
+def cmd_packet_status(client: FocusGuardClient) -> None:
+    st = client.send_command("packet_status")
+    print(format_packet_status(st))
+
+
+def cmd_packet_inspect(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    pkt_id = getattr(args, "id", None)
+    show_hex = getattr(args, "hex", False)
+    pkt = client.send_command("packet_inspect", {"id": pkt_id})
+    if not pkt:
+        print(f"\n{YELLOW}No packet found matching ID {pkt_id or 'latest'}.{RESET}\n")
+        return
+    print(format_packet_detail(pkt, show_hex=show_hex))
 
 
 def main() -> None:
+
     parser = build_parser()
     args = parser.parse_args()
 
@@ -394,6 +460,29 @@ def main() -> None:
 
         elif args.command == "network":
             cmd_network(client)
+
+        elif args.command == "packet-monitor":
+            cmd_packet_monitor(client, args)
+
+        elif args.command == "packet-stats":
+            cmd_packet_stats(client)
+
+        elif args.command == "packet-status":
+            cmd_packet_status(client)
+
+        elif args.command == "packet":
+            subcmd = getattr(args, "packet_subcommand", None)
+            if subcmd == "inspect":
+                cmd_packet_inspect(client, args)
+            elif subcmd == "stats":
+                cmd_packet_stats(client)
+            elif subcmd == "status":
+                cmd_packet_status(client)
+            elif subcmd == "monitor":
+                cmd_packet_monitor(client, args)
+            else:
+                cmd_packet_status(client)
+
 
     except DaemonError as e:
         print(f"\n{RED}{BOLD}ERROR:{RESET} {e}\n", file=sys.stderr)

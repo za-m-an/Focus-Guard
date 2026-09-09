@@ -140,3 +140,40 @@ class FocusGuardClient:
                 sock.close()
             except Exception:
                 pass
+
+    def stream_packet_monitor(self, params: dict[str, Any] | None = None) -> Generator[dict[str, Any], None, None]:
+        """
+        Connect to daemon, request live packet monitor stream, and yield PacketMetadata in real-time.
+        """
+        sock = self._connect(timeout=None)
+        sock.settimeout(None)  # Infinite blocking wait for real-time packet events
+        request_bytes = json.dumps({"action": "packet_monitor", "params": params or {}}).encode("utf-8") + b"\n"
+        sock.sendall(request_bytes)
+
+        buffer = bytearray()
+        try:
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line.decode("utf-8"))
+                    except Exception:
+                        continue
+                    if data.get("heartbeat"):
+                        continue
+                    if "packet" in data:
+                        yield data["packet"]
+        except (socket.timeout, TimeoutError):
+            pass
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+

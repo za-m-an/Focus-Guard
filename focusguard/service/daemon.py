@@ -17,6 +17,7 @@ from focusguard.network.bypass import BypassResistanceManager
 from focusguard.network.devices import DeviceTracker
 from focusguard.network.diagnostics import DiagnosticsRunner
 from focusguard.network.gateway import NetworkGatewayManager
+from focusguard.network.monitor import PacketMonitorEngine
 from focusguard.service.event_bus import EventBus
 from focusguard.service.ipc_server import IPCServer
 from focusguard.storage.log_store import EventLogStore
@@ -29,7 +30,7 @@ logger = logging.getLogger("focusguard")
 class FocusGuardDaemon:
     """
     Main server appliance daemon running DNS filtering, policy enforcement,
-    network gateway redirection, and real-time IPC streaming.
+    network gateway redirection, packet monitoring, and real-time IPC streaming.
     """
 
     def __init__(
@@ -66,6 +67,12 @@ class FocusGuardDaemon:
         self.gateway = NetworkGatewayManager(dns_port=port)
         self.auto_gateway = auto_gateway
 
+        # Packet monitoring and inspection subsystem
+        self.packet_monitor = PacketMonitorEngine(
+            device_tracker=self.device_tracker,
+            policy_engine=self.policy_engine,
+        )
+
         def on_blocked_query(client_ip: str, domain: str, qtype: int) -> None:
             self.log_store.record("dns_block", "query_sinkholed", f"Domain: {domain} from {client_ip}")
 
@@ -90,7 +97,11 @@ class FocusGuardDaemon:
             device_tracker=self.device_tracker,
         )
 
-        self.diagnostics = DiagnosticsRunner(self.policy_engine, gateway_manager=self.gateway)
+        self.diagnostics = DiagnosticsRunner(
+            self.policy_engine,
+            gateway_manager=self.gateway,
+            packet_monitor=self.packet_monitor,
+        )
         self.ipc_server = IPCServer(
             policy_engine=self.policy_engine,
             socket_path=socket_path,
@@ -99,6 +110,7 @@ class FocusGuardDaemon:
             log_store=self.log_store,
             gateway_manager=self.gateway,
             device_tracker=self.device_tracker,
+            packet_monitor=self.packet_monitor,
         )
         self._running = False
 
@@ -120,6 +132,7 @@ class FocusGuardDaemon:
 
         await self.dns_server.start()
         await self.ipc_server.start()
+        self.packet_monitor.start()
 
         # Attempt transparent redirection if in gateway mode
         if self.auto_gateway and self.gateway.is_ip_forwarding_enabled():
@@ -150,9 +163,11 @@ class FocusGuardDaemon:
         finally:
             self._running = False
             heartbeat_task.cancel()
+            self.packet_monitor.stop()
             await self.ipc_server.stop()
             await self.dns_server.stop()
             logger.info("FocusGuard daemon cleanly shut down.")
+
 
 
 def setup_logging(verbose: bool = False) -> None:

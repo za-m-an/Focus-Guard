@@ -87,8 +87,16 @@ def format_status_card(status_dict: dict[str, Any]) -> str:
         gw_label = f"{GREEN}● ACTIVE (Transparent Redirection){RESET}" if gw_mode == "TRANSPARENT_GATEWAY" else f"{BLUE}STANDARD_DNS{RESET}"
         lines.append(f"  {BOLD}Gateway Enforcement:{RESET}  {gw_label}")
 
+    pkt_mon = status_dict.get("packet_monitor")
+    if pkt_mon:
+        pkt_st = pkt_mon.get("status", "INACTIVE")
+        pkt_mode = pkt_mon.get("capture_mode", "N/A")
+        pkt_label = f"{GREEN}● ACTIVE ({pkt_mode}){RESET}" if pkt_st == "ACTIVE" else f"{YELLOW}● {pkt_st} ({pkt_mode}){RESET}"
+        lines.append(f"  {BOLD}Packet Inspection:{RESET}    {pkt_label}")
+
     lines.append(f"{CYAN}{'─' * 46}{RESET}")
     return "\n".join(lines)
+
 
 
 def format_doctor_report(report: dict[str, Any]) -> str:
@@ -297,4 +305,151 @@ def format_services_card(services: list[dict[str, Any]]) -> str:
         f"  {DIM}To block during a focus session: focusguard start -d 2h --services youtube instagram{RESET}\n",
     ])
     return "\n".join(lines)
+
+
+def format_packet_stream_row(pkt: dict[str, Any], verbose: bool = False) -> str:
+    """Format single packet metadata for live packet monitor output."""
+    time_str = pkt.get("timestamp", "")[:8]
+    iface = pkt.get("interface", "eth0")[:6]
+    direction = pkt.get("direction", "FORWARDED")[:10]
+    proto = pkt.get("protocol", "OTHER")[:7]
+
+    src_ip = pkt.get("src_ip", "")
+    src_port = pkt.get("src_port")
+    src_str = f"{src_ip}:{src_port}" if src_port else src_ip
+    src_str = src_str[:22]
+
+    dst_ip = pkt.get("dst_ip", "")
+    dst_port = pkt.get("dst_port")
+    dst_str = f"{dst_ip}:{dst_port}" if dst_port else dst_ip
+    dst_str = dst_str[:22]
+
+    action = pkt.get("policy_action", "OBSERVED")
+    if action == "MATCH":
+        action_str = f"{RED}{BOLD}MATCH{RESET}"
+    elif action == "ALLOWED":
+        action_str = f"{GREEN}ALLOWED{RESET}"
+    else:
+        action_str = f"{BLUE}OBSERVED{RESET}"
+
+    policy_note = pkt.get("policy_match") or ""
+    if policy_note:
+        policy_str = f" [{DIM}{policy_note[:24]}{RESET}]"
+    else:
+        policy_str = ""
+
+    if verbose:
+        flags = ",".join(pkt.get("tcp_flags", []))
+        flags_str = f" flags:[{flags}]" if flags else ""
+        length_str = f" len:{pkt.get('length', 0)}B"
+        return f"{time_str} {iface:<6} {direction:<10} {src_str:<22} → {dst_str:<22} {proto:<7} {action_str}{policy_str}{flags_str}{length_str}"
+
+    return f"{time_str} {iface:<6} {direction:<10} {src_str:<22} → {dst_str:<22} {proto:<7} {action_str}{policy_str}"
+
+
+def format_packet_stats(stats: dict[str, Any]) -> str:
+    """Format packet statistics breakdown card."""
+    tot_packets = stats.get("packets_observed", 0)
+    tot_bytes = stats.get("bytes_observed", 0)
+    tcp_pct = stats.get("tcp_percentage", 0.0)
+    udp_pct = stats.get("udp_percentage", 0.0)
+    icmp_pct = stats.get("icmp_percentage", 0.0)
+    other_pct = stats.get("other_percentage", 0.0)
+
+    in_bytes = stats.get("inbound_bytes", 0)
+    out_bytes = stats.get("outbound_bytes", 0)
+    flows = stats.get("active_flows", 0)
+
+    def to_human_bytes(n: int) -> str:
+        for unit in ["B", "KB", "MB", "GB"]:
+            if n < 1024.0:
+                return f"{n:.1f} {unit}"
+            n /= 1024.0
+        return f"{n:.1f} TB"
+
+    lines = [
+        f"\n{CYAN}{BOLD}FOCUSGUARD PACKET TRAFFIC STATISTICS{RESET}",
+        f"{CYAN}{'═' * 52}{RESET}",
+        f"  {BOLD}Packets Observed:{RESET}  {tot_packets:,}",
+        f"  {BOLD}Bytes Observed:{RESET}    {to_human_bytes(tot_bytes)} ({tot_bytes:,} B)",
+        f"  {BOLD}Active Flows:{RESET}      {GREEN}{flows}{RESET}",
+        "",
+        f"  {BOLD}Protocol Distribution:{RESET}",
+        f"  {'─' * 46}",
+        f"    • TCP:           {tcp_pct:>5.1f}%  ({stats.get('tcp_packets', 0):,} pkts)",
+        f"    • UDP:           {udp_pct:>5.1f}%  ({stats.get('udp_packets', 0):,} pkts)",
+        f"    • ICMP/ICMPv6:   {icmp_pct:>5.1f}%  ({stats.get('icmp_packets', 0):,} pkts)",
+        f"    • Other / ARP:   {other_pct:>5.1f}%  ({stats.get('other_packets', 0):,} pkts)",
+        "",
+        f"  {BOLD}Directional Volume:{RESET}",
+        f"  {'─' * 46}",
+        f"    • Inbound:       {to_human_bytes(in_bytes)}",
+        f"    • Outbound:      {to_human_bytes(out_bytes)}",
+        f"{CYAN}{'═' * 52}{RESET}\n",
+    ]
+    return "\n".join(lines)
+
+
+def format_packet_detail(pkt: dict[str, Any], show_hex: bool = False) -> str:
+    """Format detailed view of an individual inspected packet."""
+    lines = [
+        f"\n{CYAN}{BOLD}Packet Header Inspection (ID #{pkt.get('id')}){RESET}",
+        f"{CYAN}{'─' * 52}{RESET}",
+        f"  {BOLD}Timestamp:{RESET}     {pkt.get('timestamp')}",
+        f"  {BOLD}Interface:{RESET}     {pkt.get('interface')}",
+        f"  {BOLD}Direction:{RESET}     {pkt.get('direction')}",
+        f"  {BOLD}IP Version:{RESET}    {pkt.get('ip_version')}",
+        "",
+        f"  {BOLD}Source:{RESET}",
+        f"    IP:          {pkt.get('src_ip')}",
+        f"    Port:        {pkt.get('src_port') or 'N/A'}",
+        f"    Device:      {pkt.get('device_name') or 'Unknown'}",
+        "",
+        f"  {BOLD}Destination:{RESET}",
+        f"    IP:          {pkt.get('dst_ip')}",
+        f"    Port:        {pkt.get('dst_port') or 'N/A'}",
+        "",
+        f"  {BOLD}Protocol:{RESET}      {pkt.get('protocol')}",
+        f"  {BOLD}Packet Length:{RESET} {pkt.get('length')} bytes",
+        f"  {BOLD}TTL / Hop:{RESET}     {pkt.get('ttl') or 'N/A'}",
+    ]
+
+    flags = pkt.get("tcp_flags")
+    if flags:
+        lines.append(f"  {BOLD}TCP Flags:{RESET}     {', '.join(flags)}")
+
+    match = pkt.get("policy_match")
+    if match:
+        lines.append(f"  {BOLD}Policy Match:{RESET}  {RED}{BOLD}{match}{RESET}")
+        lines.append(f"  {BOLD}Policy Action:{RESET} {pkt.get('policy_action')}")
+
+    if show_hex and pkt.get("raw_preview"):
+        lines.extend([
+            "",
+            f"  {BOLD}Raw Payload Preview (Hex & ASCII):{RESET}",
+            f"  {'─' * 50}",
+            f"  {DIM}{pkt.get('raw_preview')}{RESET}",
+        ])
+
+    lines.append(f"{CYAN}{'─' * 52}{RESET}\n")
+    return "\n".join(lines)
+
+
+def format_packet_status(status: dict[str, Any]) -> str:
+    """Format status of packet monitoring engine."""
+    mode = status.get("capture_mode", "UNKNOWN")
+    lines = [
+        f"\n{CYAN}{BOLD}PACKET MONITORING & INSPECTION STATUS{RESET}",
+        f"{CYAN}{'─' * 46}{RESET}",
+        f"  {BOLD}Status:{RESET}             {GREEN if status.get('status') == 'ACTIVE' else RED}{status.get('status')}{RESET}",
+        f"  {BOLD}Capture Mode:{RESET}       {mode}",
+        f"  {BOLD}Interface:{RESET}          {status.get('interface')}",
+        f"  {BOLD}Packets/sec:{RESET}        {status.get('packets_per_second', 0.0)}",
+        f"  {BOLD}Packets Observed:{RESET}   {status.get('packets_observed', 0):,}",
+        f"  {BOLD}Active Flows:{RESET}       {status.get('active_flows', 0):,}",
+        f"  {BOLD}Recent Buffer:{RESET}      {status.get('buffer_count', 0)} / 500 pkts",
+        f"{CYAN}{'─' * 46}{RESET}\n",
+    ]
+    return "\n".join(lines)
+
 

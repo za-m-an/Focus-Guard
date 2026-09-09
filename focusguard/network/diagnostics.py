@@ -17,9 +17,16 @@ class DiagnosticsRunner:
     Runs comprehensive diagnostic checks on network, DNS, ports, IPv4/IPv6, and system health.
     """
 
-    def __init__(self, policy_engine: PolicyEngine, gateway_manager: Any = None) -> None:
+    def __init__(
+        self,
+        policy_engine: PolicyEngine,
+        gateway_manager: Any = None,
+        packet_monitor: Any = None,
+    ) -> None:
         self.policy_engine = policy_engine
         self.gateway_manager = gateway_manager
+        self.packet_monitor = packet_monitor
+
 
     async def run_checks(self) -> dict[str, Any]:
         """Execute all diagnostics and return structured report."""
@@ -124,7 +131,34 @@ class DiagnosticsRunner:
             "recommendation": "Ensure DietPi system clock is synced via NTP (dietpi-config -> Time Options)." if not clock_ok else None,
         })
 
+        # 9. Packet Capture & Traffic Inspection
+        if self.packet_monitor:
+            pkt_status = self.packet_monitor.get_status()
+            mode = pkt_status.get("capture_mode", "UNKNOWN")
+            if "RAW" in mode:
+                checks.append({
+                    "name": "Packet-Level Monitoring",
+                    "status": "PASS",
+                    "details": f"Kernel raw socket active ({mode}). Interface: {pkt_status.get('interface')} | Flows: {pkt_status.get('active_flows')}",
+                    "recommendation": None,
+                })
+            elif "UNPRIVILEGED" in mode:
+                checks.append({
+                    "name": "Packet-Level Monitoring",
+                    "status": "WARN",
+                    "details": f"Running unprivileged ({mode}). Raw socket capture requires root or CAP_NET_RAW.",
+                    "recommendation": "Run 'sudo setcap cap_net_raw+ep $(which focusguardd)' or run daemon as root.",
+                })
+            else:
+                checks.append({
+                    "name": "Packet-Level Monitoring",
+                    "status": "INFO",
+                    "details": f"Mode: {mode}. Packet parser and flow engine ready.",
+                    "recommendation": None,
+                })
+
         all_pass = all(c["status"] in ("PASS", "LOCKED", "INFO") for c in checks)
+
 
         return {
             "summary_status": "OPTIMAL" if all_pass else "NEEDS_ATTENTION",

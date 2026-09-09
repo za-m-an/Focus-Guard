@@ -14,6 +14,8 @@ from focusguard.cli.formatter import (
     format_bypass_status,
     format_devices_table,
     format_services_card,
+    format_packet_stats,
+    format_packet_stream_row,
     BOLD,
     CYAN,
     GREEN,
@@ -22,6 +24,7 @@ from focusguard.cli.formatter import (
     RESET,
     DIM,
 )
+
 
 
 def run_interactive_menu(client: FocusGuardClient) -> None:
@@ -42,11 +45,13 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
         print("11. Distraction Services (YouTube, IG, etc.)")
         print("12. Discovered Network Client Devices")
         print("13. VPN & Encrypted DNS Bypass Defense")
-        print("14. View Operational Audit Logs")
-        print("15. Exit")
+        print("14. Packet Monitor & Traffic Statistics")
+        print("15. View Operational Audit Logs")
+        print("16. Exit")
         print(f"{CYAN}{'─' * 38}{RESET}")
 
-        choice = input(f"{BOLD}Select an option [1-15]: {RESET}").strip()
+        choice = input(f"{BOLD}Select an option [1-16]: {RESET}").strip()
+
 
         try:
             if choice == "1":
@@ -188,6 +193,21 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                 print("\n" + format_bypass_status(bypass) + "\n")
 
             elif choice == "14":
+                print("\n1. View Packet Statistics Breakdown")
+                print("2. Stream Live Packet Monitor")
+                sub = input("Select [1-2]: ").strip()
+                if sub == "1":
+                    stats = client.send_command("packet_stats")
+                    print(format_packet_stats(stats))
+                elif sub == "2":
+                    print(f"\n{CYAN}Streaming live packet metadata (Press Ctrl+C to stop)...{RESET}\n")
+                    try:
+                        for pkt in client.stream_packet_monitor():
+                            print(format_packet_stream_row(pkt))
+                    except KeyboardInterrupt:
+                        print(f"\n{CYAN}Packet monitor stopped.{RESET}")
+
+            elif choice == "15":
                 logs = client.send_command("logs", {"limit": 15})
                 print(f"\n{BOLD}Recent Events (Newest First):{RESET}")
                 for evt in logs:
@@ -197,12 +217,13 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                     det = evt.get("details", "")
                     print(f"  {DIM}{ts}{RESET} [{cat}] {BOLD}{act}{RESET}: {det}")
 
-            elif choice in ("15", "q", "exit"):
+            elif choice in ("16", "q", "exit"):
                 print("Goodbye.")
                 break
 
             else:
-                print(f"{RED}Invalid selection. Please choose 1-15.{RESET}")
+                print(f"{RED}Invalid selection. Please choose 1-16.{RESET}")
+
 
         except DaemonError as e:
             print(f"\n{RED}{BOLD}ERROR:{RESET} {e}\n")

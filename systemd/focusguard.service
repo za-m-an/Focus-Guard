@@ -27,6 +27,10 @@ RuntimeDirectory=focusguard
 RuntimeDirectoryMode=0775
 ReadWritePaths=/var/lib/focusguard /var/log/focusguard /run/focusguard
 
+# Environment & Working Directory
+WorkingDirectory=/opt/focusguard
+Environment="PYTHONPATH=/opt/focusguard"
+
 ExecStart=/usr/local/bin/focusguardd
 Restart=always
 RestartSec=3

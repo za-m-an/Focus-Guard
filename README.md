@@ -72,6 +72,17 @@ The installer will:
 
 ---
 
+## Updating FocusGuard
+
+To pull the latest updates, refresh binaries, and restart the service at any time:
+
+```bash
+cd Focus-Guard
+sudo ./scripts/update.sh
+```
+
+---
+
 ## Usage Workflow
 
 Connect to your DietPi server over SSH:

@@ -56,6 +56,8 @@ class DNSServer:
         host_v6: str = "::",
         port: int = 53,
         on_block_callback: Callable[[str, str, int], None] | None = None,
+        flow_callback: Callable[[str, str, int, str, str], None] | None = None,
+        event_bus: Any = None,
     ) -> None:
         self.sinkhole = sinkhole
         self.resolver = resolver
@@ -63,6 +65,8 @@ class DNSServer:
         self.host_v6 = host_v6
         self.port = port
         self.on_block_callback = on_block_callback
+        self.flow_callback = flow_callback
+        self.event_bus = event_bus
         self._is_running = False
         self._udp_transports: list[asyncio.DatagramTransport] = []
         self._tcp_servers: list[asyncio.Server] = []
@@ -70,6 +74,7 @@ class DNSServer:
     async def handle_query(self, query_bytes: bytes, client_ip: str) -> bytes | None:
         """
         Processes a raw DNS packet, checks sinkhole, or forwards to upstream.
+        Broadcasting real-time flow events to the monitor event bus and audit store.
         """
         try:
             msg = DNSMessage.parse(query_bytes)
@@ -89,6 +94,30 @@ class DNSServer:
         q = msg.questions[0]
         qname = q.qname
         is_blocked, reason = self.sinkhole.is_blocked(qname)
+        action = "BLOCKED" if is_blocked else "ALLOWED"
+
+        # Broadcast to real-time monitor subscribers
+        if self.event_bus:
+            try:
+                from focusguard.service.event_bus import FlowEvent
+                import datetime
+                self.event_bus.publish(FlowEvent(
+                    timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    client_ip=client_ip,
+                    domain=qname,
+                    qtype=q.qtype,
+                    action=action,
+                    reason=reason,
+                ))
+            except Exception:
+                pass
+
+        # Record flow in SQLite audit log
+        if self.flow_callback:
+            try:
+                self.flow_callback(client_ip, qname, q.qtype, action, reason)
+            except Exception:
+                pass
 
         if is_blocked:
             if self.on_block_callback:

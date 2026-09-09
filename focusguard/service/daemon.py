@@ -1,4 +1,4 @@
-"""FocusGuard Background Daemon Service."""
+"""FocusGuard Background Daemon Service with Real-Time Event Bus and Gateway Management."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from focusguard.dns.resolver import DNSResolver
 from focusguard.dns.server import DNSServer
 from focusguard.dns.sinkhole import DomainSinkhole
 from focusguard.network.diagnostics import DiagnosticsRunner
+from focusguard.network.gateway import NetworkGatewayManager
+from focusguard.service.event_bus import EventBus
 from focusguard.service.ipc_server import IPCServer
 from focusguard.storage.log_store import EventLogStore
 from focusguard.storage.state import StateManager
@@ -24,7 +26,8 @@ logger = logging.getLogger("focusguard")
 
 class FocusGuardDaemon:
     """
-    Main server appliance daemon running DNS filtering, policy enforcement, and IPC.
+    Main server appliance daemon running DNS filtering, policy enforcement,
+    network gateway redirection, and real-time IPC streaming.
     """
 
     def __init__(
@@ -32,6 +35,7 @@ class FocusGuardDaemon:
         data_dir: Path | str | None = None,
         socket_path: Path | str | None = None,
         dns_port: int | None = None,
+        auto_gateway: bool = True,
     ) -> None:
         self.state_mgr = StateManager(data_dir=data_dir)
         self.log_store = EventLogStore(
@@ -44,6 +48,8 @@ class FocusGuardDaemon:
             log_store=self.log_store,
         )
 
+        self.event_bus = EventBus()
+
         # DNS resolver and port
         port = dns_port or self.policy_engine.config.dns_port
         upstreams = [
@@ -51,21 +57,41 @@ class FocusGuardDaemon:
         ]
         self.resolver = DNSResolver(upstreams=upstreams)
 
+        # Gateway and transparent redirection manager
+        self.gateway = NetworkGatewayManager(dns_port=port)
+        self.auto_gateway = auto_gateway
+
         def on_blocked_query(client_ip: str, domain: str, qtype: int) -> None:
             self.log_store.record("dns_block", "query_sinkholed", f"Domain: {domain} from {client_ip}")
+
+        def on_flow_recorded(client_ip: str, domain: str, qtype: int, action: str, reason: str) -> None:
+            sess_id = self.policy_engine.session_mgr.state.session_id if self.policy_engine.session_mgr.is_locked else None
+            self.log_store.record_flow(
+                client_ip=client_ip,
+                domain=domain,
+                qtype=qtype,
+                action=action,
+                reason=reason,
+                session_id=sess_id,
+            )
 
         self.dns_server = DNSServer(
             sinkhole=self.sinkhole,
             resolver=self.resolver,
             port=port,
             on_block_callback=on_blocked_query,
+            flow_callback=on_flow_recorded,
+            event_bus=self.event_bus,
         )
 
-        self.diagnostics = DiagnosticsRunner(self.policy_engine)
+        self.diagnostics = DiagnosticsRunner(self.policy_engine, gateway_manager=self.gateway)
         self.ipc_server = IPCServer(
             policy_engine=self.policy_engine,
             socket_path=socket_path,
             diagnostics_runner=self.diagnostics,
+            event_bus=self.event_bus,
+            log_store=self.log_store,
+            gateway_manager=self.gateway,
         )
         self._running = False
 
@@ -81,12 +107,18 @@ class FocusGuardDaemon:
             await asyncio.sleep(1.0)
 
     async def run(self) -> None:
-        """Start daemon components and run event loop."""
+        """Start daemon components, enable gateway redirection, and run event loop."""
         self._running = True
         logger.info("Starting FocusGuard v%s on DietPi...", __version__)
 
         await self.dns_server.start()
         await self.ipc_server.start()
+
+        # Attempt transparent redirection if in gateway mode
+        if self.auto_gateway and self.gateway.is_ip_forwarding_enabled():
+            success, msg = self.gateway.enable_transparent_redirection()
+            if success:
+                logger.info("Transparent gateway redirection initialized: %s", msg)
 
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
@@ -102,7 +134,6 @@ class FocusGuardDaemon:
             try:
                 loop.add_signal_handler(sig, _handle_stop)
             except (NotImplementedError, RuntimeError):
-                # Windows doesn't support add_signal_handler on some loops
                 pass
 
         try:
@@ -131,6 +162,7 @@ def main() -> None:
     parser.add_argument("--data-dir", help="Path to state storage directory")
     parser.add_argument("--socket", help="Path to IPC Unix socket")
     parser.add_argument("--port", type=int, help="DNS port (default: 53)")
+    parser.add_argument("--no-gateway", action="store_true", help="Disable automatic transparent redirection")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logging")
     args = parser.parse_args()
 
@@ -139,6 +171,7 @@ def main() -> None:
         data_dir=args.data_dir,
         socket_path=args.socket,
         dns_port=args.port,
+        auto_gateway=not args.no_gateway,
     )
 
     try:

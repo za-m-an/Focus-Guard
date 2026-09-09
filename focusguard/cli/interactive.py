@@ -8,12 +8,16 @@ from focusguard.cli.formatter import (
     format_status_card,
     format_locked_banner,
     format_doctor_report,
+    format_monitor_header,
+    format_monitor_row,
+    format_stats_card,
     BOLD,
     CYAN,
     GREEN,
     RED,
     YELLOW,
     RESET,
+    DIM,
 )
 
 
@@ -21,19 +25,22 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
     """Run interactive menu loop."""
     while True:
         print("\n" + f"{CYAN}{BOLD}FocusGuard Appliance Console{RESET}")
-        print(f"{CYAN}{'─' * 32}{RESET}")
-        print("1. View Appliance Status")
-        print("2. List Blocked Domains")
-        print("3. Add Blocked Domain")
-        print("4. Remove Blocked Domain")
-        print("5. Start Locked Focus Session")
-        print("6. View Active Session")
-        print("7. Run Diagnostics (Doctor)")
-        print("8. View Audit Logs")
-        print("9. Exit")
-        print(f"{CYAN}{'─' * 32}{RESET}")
+        print(f"{CYAN}{'─' * 38}{RESET}")
+        print(" 1. View Appliance Status")
+        print(" 2. List Blocked Domains")
+        print(" 3. Add Blocked Domain")
+        print(" 4. Remove Blocked Domain")
+        print(" 5. Start Locked Focus Session")
+        print(" 6. View Active Session")
+        print(" 7. Run Diagnostics (Doctor)")
+        print(" 8. Live Network Flow Monitor")
+        print(" 9. Traffic Analytics & Statistics")
+        print("10. Gateway & Transparent Redirection")
+        print("11. View Operational Audit Logs")
+        print("12. Exit")
+        print(f"{CYAN}{'─' * 38}{RESET}")
 
-        choice = input(f"{BOLD}Select an option [1-9]: {RESET}").strip()
+        choice = input(f"{BOLD}Select an option [1-12]: {RESET}").strip()
 
         try:
             if choice == "1":
@@ -113,6 +120,42 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                 print("\n" + format_doctor_report(report))
 
             elif choice == "8":
+                print(format_monitor_header())
+                print(f"{DIM}Streaming live network flows (Press Ctrl+C to exit)...{RESET}\n")
+                try:
+                    for event in client.stream_monitor({}):
+                        print(format_monitor_row(event))
+                except KeyboardInterrupt:
+                    print(f"\n{CYAN}Monitor stopped.{RESET}")
+
+            elif choice == "9":
+                stats = client.send_command("stats")
+                print("\n" + format_stats_card(stats))
+
+            elif choice == "10":
+                gw = client.send_command("gateway_status")
+                mode = gw.get("mode", "STANDARD_DNS")
+                fwd = gw.get("ip_forwarding", False)
+                redir = gw.get("transparent_redirection", False)
+
+                print(f"\n{CYAN}{BOLD}Gateway & Transparent Redirection{RESET}")
+                print(f"{'─' * 38}")
+                print(f"  Mode:           {GREEN if redir else BLUE}{mode}{RESET}")
+                print(f"  IP Forwarding:  {'Enabled' if fwd else 'Disabled'}")
+                print(f"  Redirection:    {GREEN + 'ACTIVE' if redir else YELLOW + 'INACTIVE'}{RESET}")
+                print(f"{'─' * 38}")
+                print("1. Enable Transparent Redirection (Redirect port 53)")
+                print("2. Disable Transparent Redirection")
+                print("3. Back to Main Menu")
+                gw_choice = input("Select [1-3]: ").strip()
+                if gw_choice == "1":
+                    res = client.send_command("gateway_enable")
+                    print(f"{GREEN}✓ {res}{RESET}")
+                elif gw_choice == "2":
+                    res = client.send_command("gateway_disable")
+                    print(f"{GREEN}✓ {res}{RESET}")
+
+            elif choice == "11":
                 logs = client.send_command("logs", {"limit": 15})
                 print(f"\n{BOLD}Recent Events (Newest First):{RESET}")
                 for evt in logs:
@@ -122,12 +165,12 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                     det = evt.get("details", "")
                     print(f"  {DIM}{ts}{RESET} [{cat}] {BOLD}{act}{RESET}: {det}")
 
-            elif choice in ("9", "q", "exit"):
+            elif choice in ("12", "q", "exit"):
                 print("Goodbye.")
                 break
 
             else:
-                print(f"{RED}Invalid selection. Please choose 1-9.{RESET}")
+                print(f"{RED}Invalid selection. Please choose 1-12.{RESET}")
 
         except DaemonError as e:
             print(f"\n{RED}{BOLD}ERROR:{RESET} {e}\n")

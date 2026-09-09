@@ -171,6 +171,94 @@ Any attempt to `remove`, `edit`, or `stop` during the locked window is rejected.
 
 ---
 
+## Live Network Flow Monitoring (`focusguard monitor`)
+
+Watch DNS queries and network blocking decisions across your LAN in real-time as devices browse:
+
+```bash
+focusguard monitor
+```
+```text
+FOCUSGUARD LIVE NETWORK MONITOR
+──────────────────────────────────────────────────────────────────────────
+TIME       DEVICE            DESTINATION                ACTION    REASON
+──────────────────────────────────────────────────────────────────────────
+20:14:02   192.168.1.15      youtube.com                BLOCKED   blocked_by_policy
+20:14:03   192.168.1.15      googlevideo.com            BLOCKED   blocked_by_policy
+20:14:04   192.168.1.22      github.com                 ALLOWED   permitted
+20:14:05   192.168.1.15      stackoverflow.com          ALLOWED   permitted
+20:14:06   192.168.1.30      tiktok.com                 BLOCKED   blocked_by_policy
+```
+
+### Filters:
+- Show only blocked requests: `focusguard monitor --blocked`
+- Filter by device IP: `focusguard monitor --device 192.168.1.15`
+- Filter by domain name: `focusguard monitor --domain youtube`
+
+---
+
+## Traffic Analytics & Statistics (`focusguard stats`)
+
+Inspect aggregate traffic counts, block rates, top blocked domains, and active devices:
+
+```bash
+focusguard stats
+```
+```text
+FocusGuard Traffic Analytics & Statistics
+════════════════════════════════════════════════════
+  Total Queries:      1,420
+  Blocked Queries:    389 (27.4% block rate)
+  Allowed Queries:    1,031
+  Active Devices:     4
+
+Top Blocked Domains:
+──────────────────────────────────────
+  • youtube.com                   194
+  • googlevideo.com               112
+  • facebook.com                   54
+  • reddit.com                     29
+
+Device Activity Breakdown:
+──────────────────────────────────────────────
+  IP Address         Total      Blocked
+  192.168.1.15       842        290
+  192.168.1.22       390        12
+  192.168.1.30       188        87
+════════════════════════════════════════════════════
+```
+
+Add `--session` to scope metrics specifically to the current active focus session:
+```bash
+focusguard stats --session
+```
+
+---
+
+## Automatic Network Enforcement & Gateway Mode
+
+To automatically enforce policy on **any new device that joins your home network** without manually configuring DNS on every device:
+
+FocusGuard provides transparent network redirection via Linux kernel IP forwarding and iptables:
+
+```bash
+# View gateway & redirection status
+focusguard gateway status
+
+# Enable transparent DNS interception (redirects all port 53 traffic)
+sudo focusguard gateway enable
+
+# Disable transparent redirection (strictly rejected while focus session is locked!)
+sudo focusguard gateway disable
+```
+
+When enabled:
+- Any outbound DNS packet (port 53 UDP/TCP) originating from any device is transparently intercepted and filtered by FocusGuard.
+- Even if a device has hardcoded `8.8.8.8` or `1.1.1.1`, its queries are intercepted.
+- Outbound DNS-over-TLS (port 853) is rejected to prevent encrypted DNS bypass.
+
+---
+
 ## Interactive Menu
 
 If you prefer navigating via an interactive menu rather than typing flags:

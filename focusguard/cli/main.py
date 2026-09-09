@@ -11,6 +11,9 @@ from focusguard.cli.formatter import (
     format_status_card,
     format_locked_banner,
     format_doctor_report,
+    format_monitor_header,
+    format_monitor_row,
+    format_stats_card,
     BOLD,
     CYAN,
     GREEN,
@@ -70,6 +73,20 @@ def build_parser() -> argparse.ArgumentParser:
     log_parser.add_argument("-n", "--limit", type=int, default=20, help="Number of entries to show (default: 20)")
     log_parser.add_argument("-c", "--category", help="Filter by category (session, policy, dns_block)")
 
+    # monitor
+    mon_parser = subparsers.add_parser("monitor", help="Stream live network flow events in real-time")
+    mon_parser.add_argument("-b", "--blocked", action="store_true", help="Show only blocked queries")
+    mon_parser.add_argument("--device", help="Filter events by client device IP")
+    mon_parser.add_argument("--domain", help="Filter events by domain name substring")
+
+    # stats
+    stats_parser = subparsers.add_parser("stats", help="Display traffic analytics and blocking statistics")
+    stats_parser.add_argument("-s", "--session", action="store_true", help="Scope statistics to the active focus session")
+
+    # gateway
+    gw_parser = subparsers.add_parser("gateway", help="Manage transparent network redirection and gateway mode")
+    gw_parser.add_argument("action", choices=["status", "enable", "disable"], nargs="?", default="status", help="Gateway action (status, enable, disable)")
+
     # network
     subparsers.add_parser("network", help="Inspect network interfaces and router DNS setup guide")
 
@@ -77,6 +94,54 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("menu", help="Launch interactive terminal menu")
 
     return parser
+
+
+def cmd_monitor(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    """Run live network traffic monitor."""
+    print(format_monitor_header())
+    params = {
+        "blocked_only": args.blocked,
+        "device": args.device or "",
+        "domain": args.domain or "",
+    }
+
+    try:
+        for event in client.stream_monitor(params):
+            print(format_monitor_row(event))
+    except KeyboardInterrupt:
+        print(f"\n{CYAN}Monitor closed.{RESET}\n")
+
+
+def cmd_stats(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    """Print traffic analytics and top blocked domains."""
+    stats = client.send_command("stats", {"session_scoped": args.session})
+    print("\n" + format_stats_card(stats) + "\n")
+
+
+def cmd_gateway(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    """Inspect or toggle transparent network gateway redirection."""
+    action = args.action
+    if action == "status":
+        gw = client.send_command("gateway_status")
+        mode = gw.get("mode", "STANDARD_DNS")
+        fwd = gw.get("ip_forwarding", False)
+        redir = gw.get("transparent_redirection", False)
+
+        print(f"\n{CYAN}{BOLD}FocusGuard Network Gateway Status{RESET}")
+        print(f"{CYAN}{'─' * 42}{RESET}")
+        print(f"  {BOLD}Operating Mode:{RESET}             {GREEN if redir else BLUE}{mode}{RESET}")
+        print(f"  {BOLD}Kernel IP Forwarding:{RESET}       {'Enabled' if fwd else 'Disabled'}")
+        print(f"  {BOLD}Transparent Redirection:{RESET}   {GREEN + 'ACTIVE' if redir else YELLOW + 'INACTIVE'}{RESET}")
+        print(f"  {BOLD}Local DNS Port:{RESET}             {gw.get('dns_port', 53)}")
+        print(f"{CYAN}{'─' * 42}{RESET}\n")
+
+    elif action == "enable":
+        res = client.send_command("gateway_enable")
+        print(f"{GREEN}✓ {res}{RESET}")
+
+    elif action == "disable":
+        res = client.send_command("gateway_disable")
+        print(f"{GREEN}✓ {res}{RESET}")
 
 
 def cmd_network(client: FocusGuardClient) -> None:
@@ -195,6 +260,15 @@ def main() -> None:
                 det = evt.get("details", "")
                 print(f"  {DIM}{ts}{RESET} [{cat:<10}] {BOLD}{act:<22}{RESET} {det}")
             print()
+
+        elif args.command == "monitor":
+            cmd_monitor(client, args)
+
+        elif args.command == "stats":
+            cmd_stats(client, args)
+
+        elif args.command == "gateway":
+            cmd_gateway(client, args)
 
         elif args.command == "network":
             cmd_network(client)

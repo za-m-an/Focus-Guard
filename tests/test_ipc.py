@@ -41,6 +41,15 @@ async def test_ipc_roundtrip(tmp_path: Path):
         res_list = await asyncio.to_thread(client.send_command, "list")
         assert "reddit.com" in res_list["permanent_domains"]
 
+        # Stats
+        stats = await asyncio.to_thread(client.send_command, "stats")
+        assert "total_queries" in stats
+        assert "blocked_queries" in stats
+
+        # Gateway status
+        gw = await asyncio.to_thread(client.send_command, "gateway_status")
+        assert "mode" in gw
+
         # Start locked session
         res_session = await asyncio.to_thread(client.send_command, "start", {"duration": "1h", "domains": ["reddit.com"]})
         assert res_session["status"] == "LOCKED"

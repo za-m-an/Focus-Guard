@@ -1,4 +1,4 @@
-"""Rich terminal formatting: Unicode box banners, status cards, and diagnostic tables."""
+"""Rich terminal formatting: Unicode box banners, status cards, live monitor, and stats."""
 
 from __future__ import annotations
 
@@ -51,6 +51,7 @@ def format_status_card(status_dict: dict[str, Any]) -> str:
     session = status_dict.get("session", {})
     policy = status_dict.get("policy", {})
     dns = status_dict.get("dns", {})
+    gateway = status_dict.get("gateway", {})
 
     is_locked = session.get("status") == "LOCKED"
     status_label = f"{RED}{BOLD}LOCKED{RESET}" if is_locked else f"{GREEN}IDLE{RESET}"
@@ -79,9 +80,14 @@ def format_status_card(status_dict: dict[str, Any]) -> str:
         f"  {BOLD}Permanent Blocklist:{RESET}   {policy.get('permanent_count', 0)} domains",
         f"  {BOLD}Total Active Blocked:{RESET}  {BOLD}{policy.get('active_blocked_count', 0)}{RESET}",
         f"  {BOLD}DoH / DoT Guard:{RESET}       {'Active' if policy.get('block_doh') else 'Disabled'}",
-        f"{CYAN}{'─' * 46}{RESET}",
     ])
 
+    if gateway:
+        gw_mode = gateway.get("mode", "STANDARD_DNS")
+        gw_label = f"{GREEN}● ACTIVE (Transparent Redirection){RESET}" if gw_mode == "TRANSPARENT_GATEWAY" else f"{BLUE}STANDARD_DNS{RESET}"
+        lines.append(f"  {BOLD}Gateway Enforcement:{RESET}  {gw_label}")
+
+    lines.append(f"{CYAN}{'─' * 46}{RESET}")
     return "\n".join(lines)
 
 
@@ -118,4 +124,81 @@ def format_doctor_report(report: dict[str, Any]) -> str:
         lines.append("")
 
     lines.append(f"{CYAN}{'═' * 62}{RESET}")
+    return "\n".join(lines)
+
+
+def format_monitor_header() -> str:
+    """Renders the Live Network Monitor header."""
+    return (
+        f"\n{CYAN}{BOLD}FOCUSGUARD LIVE NETWORK MONITOR{RESET}\n"
+        f"{CYAN}{'─' * 74}{RESET}\n"
+        f"{BOLD}{'TIME':<10} {'DEVICE':<17} {'DESTINATION':<26} {'ACTION':<10} {'REASON'}{RESET}\n"
+        f"{CYAN}{'─' * 74}{RESET}"
+    )
+
+
+def format_monitor_row(event: dict[str, Any]) -> str:
+    """Renders a single flow event row."""
+    ts = event.get("timestamp", "")
+    time_str = ts[11:19] if len(ts) >= 19 else "00:00:00"
+    device = event.get("client_ip", "")[:15]
+    domain = event.get("domain", "")[:24]
+    action = event.get("action", "ALLOWED")
+    reason = event.get("reason", "")[:18]
+
+    if action == "BLOCKED":
+        action_fmt = f"{RED}{BOLD}BLOCKED{RESET}"
+    else:
+        action_fmt = f"{GREEN}ALLOWED{RESET}"
+
+    return f"{DIM}{time_str:<10}{RESET} {device:<17} {domain:<26} {action_fmt:<19} {reason}"
+
+
+def format_stats_card(stats: dict[str, Any], session_info: dict[str, Any] | None = None) -> str:
+    """Renders traffic and blocking analytics."""
+    total = stats.get("total_queries", 0)
+    blocked = stats.get("blocked_queries", 0)
+    allowed = stats.get("allowed_queries", 0)
+    rate = stats.get("block_rate_percent", 0.0)
+    devices = stats.get("unique_devices", 0)
+    top_domains = stats.get("top_blocked_domains", [])
+    device_breakdown = stats.get("device_breakdown", [])
+
+    lines = [
+        f"{CYAN}{BOLD}FocusGuard Traffic Analytics & Statistics{RESET}",
+        f"{CYAN}{'═' * 52}{RESET}",
+        f"  {BOLD}Total Queries:{RESET}      {total}",
+        f"  {BOLD}Blocked Queries:{RESET}    {RED}{BOLD}{blocked}{RESET} ({rate}% block rate)",
+        f"  {BOLD}Allowed Queries:{RESET}    {GREEN}{allowed}{RESET}",
+        f"  {BOLD}Active Devices:{RESET}     {devices}",
+        "",
+        f"{BOLD}Top Blocked Domains:{RESET}",
+        f"{'─' * 38}",
+    ]
+
+    if not top_domains:
+        lines.append("  (No blocked queries recorded yet)")
+    else:
+        for item in top_domains:
+            dom = item.get("domain", "")
+            cnt = item.get("count", 0)
+            lines.append(f"  • {dom:<26} {RED}{BOLD}{cnt:>6}{RESET}")
+
+    lines.extend([
+        "",
+        f"{BOLD}Device Activity Breakdown:{RESET}",
+        f"{'─' * 46}",
+        f"  {'IP Address':<18} {'Total':<10} {'Blocked'}",
+    ])
+
+    if not device_breakdown:
+        lines.append("  (No device traffic recorded yet)")
+    else:
+        for dev in device_breakdown:
+            ip = dev.get("client_ip", "")
+            t_q = dev.get("total_queries", 0)
+            b_q = dev.get("blocked_queries", 0)
+            lines.append(f"  {ip:<18} {t_q:<10} {RED}{b_q}{RESET}")
+
+    lines.append(f"{CYAN}{'═' * 52}{RESET}")
     return "\n".join(lines)

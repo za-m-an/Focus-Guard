@@ -17,8 +17,9 @@ class DiagnosticsRunner:
     Runs comprehensive diagnostic checks on network, DNS, ports, IPv4/IPv6, and system health.
     """
 
-    def __init__(self, policy_engine: PolicyEngine) -> None:
+    def __init__(self, policy_engine: PolicyEngine, gateway_manager: Any = None) -> None:
         self.policy_engine = policy_engine
+        self.gateway_manager = gateway_manager
 
     async def run_checks(self) -> dict[str, Any]:
         """Execute all diagnostics and return structured report."""
@@ -36,7 +37,32 @@ class DiagnosticsRunner:
             "recommendation": "Configure a static IP on DietPi for reliable network-wide DNS." if not has_v4 else None,
         })
 
-        # 2. Upstream Internet Connectivity Check
+        # 2. Gateway & Transparent Redirection Check
+        if self.gateway_manager:
+            gw_status = self.gateway_manager.get_gateway_status()
+            if gw_status.get("transparent_redirection"):
+                checks.append({
+                    "name": "Gateway Enforcement",
+                    "status": "PASS",
+                    "details": "Transparent DNS redirection ACTIVE. Outbound port 53 traffic from all LAN devices is intercepted automatically.",
+                    "recommendation": None,
+                })
+            elif gw_status.get("ip_forwarding"):
+                checks.append({
+                    "name": "Gateway Enforcement",
+                    "status": "INFO",
+                    "details": "Kernel IP forwarding enabled. Run 'focusguard gateway enable' to activate transparent redirection.",
+                    "recommendation": None,
+                })
+            else:
+                checks.append({
+                    "name": "Gateway Enforcement",
+                    "status": "INFO",
+                    "details": "Standard DNS Mode. Ensure router DHCP option 6 advertises DietPi as sole DNS server.",
+                    "recommendation": "To automatically enforce new devices without router DNS changes, configure DietPi as gateway.",
+                })
+
+        # 3. Upstream Internet Connectivity Check
         upstream_ok = await self._check_upstream_connectivity()
         checks.append({
             "name": "Upstream Internet DNS",
@@ -45,7 +71,7 @@ class DiagnosticsRunner:
             "recommendation": "Check router gateway settings and WAN connectivity." if not upstream_ok else None,
         })
 
-        # 3. DNS Port 53 Listening Check
+        # 4. DNS Port 53 Listening Check
         port = self.policy_engine.config.dns_port
         checks.append({
             "name": f"DNS Server (Port {port})",
@@ -54,7 +80,7 @@ class DiagnosticsRunner:
             "recommendation": None,
         })
 
-        # 4. Session & Lock Integrity Check
+        # 5. Session & Lock Integrity Check
         session = self.policy_engine.session_mgr
         is_locked = session.is_locked
         checks.append({
@@ -64,7 +90,7 @@ class DiagnosticsRunner:
             "recommendation": None,
         })
 
-        # 5. IPv6 Leak Assessment
+        # 6. IPv6 Leak Assessment
         if has_v6:
             checks.append({
                 "name": "IPv6 DNS Protection",
@@ -80,7 +106,7 @@ class DiagnosticsRunner:
                 "recommendation": None,
             })
 
-        # 6. Encrypted DNS (DoH/DoT) Assessment
+        # 7. Encrypted DNS (DoH/DoT) Assessment
         checks.append({
             "name": "DoH/DoT Countermeasures",
             "status": "PASS" if self.policy_engine.config.block_doh else "WARN",
@@ -88,7 +114,7 @@ class DiagnosticsRunner:
             "recommendation": "For maximum focus protection, disable 'Secure DNS / Private DNS' in Chrome/Firefox/Android settings.",
         })
 
-        # 7. System Clock & NTP Synchronization
+        # 8. System Clock & NTP Synchronization
         now = datetime.datetime.now(datetime.timezone.utc)
         clock_ok = now.year >= 2026
         checks.append({

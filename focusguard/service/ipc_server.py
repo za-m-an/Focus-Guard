@@ -181,7 +181,13 @@ class IPCServer:
 
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    # Emit periodic keepalive heartbeat so connection never goes stale
+                    writer.write(b'{"heartbeat": true}\n')
+                    await writer.drain()
+                    continue
 
                 # Apply filters
                 if blocked_only and event.action != "BLOCKED":

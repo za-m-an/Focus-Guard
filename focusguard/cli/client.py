@@ -20,6 +20,9 @@ class ServiceNotRunningError(RuntimeError):
     pass
 
 
+_USE_DEFAULT_TIMEOUT = object()
+
+
 class FocusGuardClient:
     """
     Synchronous / lightweight socket client for CLI commands and real-time streaming.
@@ -29,8 +32,8 @@ class FocusGuardClient:
         self.socket_path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
         self.timeout = timeout
 
-    def _connect(self, timeout: float | None = None) -> socket.socket:
-        t = timeout if timeout is not None else self.timeout
+    def _connect(self, timeout: Any = _USE_DEFAULT_TIMEOUT) -> socket.socket:
+        t = self.timeout if timeout is _USE_DEFAULT_TIMEOUT else timeout
 
         # 1. Try Unix socket if supported on platform and file exists
         if hasattr(socket, "AF_UNIX") and self.socket_path.exists():
@@ -107,6 +110,7 @@ class FocusGuardClient:
         Connect to daemon, request live flow monitor stream, and yield FlowEvents in real-time.
         """
         sock = self._connect(timeout=None)
+        sock.settimeout(None)  # Infinite blocking wait for real-time traffic events
         request_bytes = json.dumps({"action": "monitor", "params": params or {}}).encode("utf-8") + b"\n"
         sock.sendall(request_bytes)
 
@@ -121,8 +125,18 @@ class FocusGuardClient:
                     line, buffer = buffer.split(b"\n", 1)
                     if not line:
                         continue
-                    data = json.loads(line.decode("utf-8"))
+                    try:
+                        data = json.loads(line.decode("utf-8"))
+                    except Exception:
+                        continue
+                    if data.get("heartbeat"):
+                        continue
                     if "event" in data:
                         yield data["event"]
+        except (socket.timeout, TimeoutError):
+            pass
         finally:
-            sock.close()
+            try:
+                sock.close()
+            except Exception:
+                pass

@@ -100,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_monitor(client: FocusGuardClient, args: argparse.Namespace) -> None:
     """Run live network traffic monitor."""
     print(format_monitor_header())
+    print(f"{DIM}Streaming live network traffic (Press Ctrl+C to stop)...{RESET}\n")
     params = {
         "blocked_only": args.blocked,
         "device": args.device or "",

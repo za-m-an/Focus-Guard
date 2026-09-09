@@ -20,15 +20,18 @@ class SessionState:
     expires_at_utc: str | None = None
     duration_seconds: int = 0
     session_domains: list[str] = field(default_factory=list)
+    session_services: list[str] = field(default_factory=list)
     boot_id: str | None = None
 
 
 @dataclass
 class AppConfig:
     permanent_domains: list[str] = field(default_factory=list)
+    permanent_services: list[str] = field(default_factory=list)
     allowed_domains: list[str] = field(default_factory=list)
     allowlist_mode: bool = False
     block_doh: bool = True
+    block_vpns: bool = True
     dns_port: int = 53
     upstreams: list[list[Any]] = field(
         default_factory=lambda: [["1.1.1.1", 53], ["9.9.9.9", 53], ["1.0.0.1", 53]]
@@ -148,9 +151,11 @@ class StateManager:
             data = PersistentData(
                 config=AppConfig(
                     permanent_domains=config_raw.get("permanent_domains", []),
+                    permanent_services=config_raw.get("permanent_services", []),
                     allowed_domains=config_raw.get("allowed_domains", []),
                     allowlist_mode=config_raw.get("allowlist_mode", False),
                     block_doh=config_raw.get("block_doh", True),
+                    block_vpns=config_raw.get("block_vpns", True),
                     dns_port=config_raw.get("dns_port", 53),
                     upstreams=config_raw.get("upstreams", [["1.1.1.1", 53], ["9.9.9.9", 53]]),
                 ),
@@ -161,6 +166,7 @@ class StateManager:
                     expires_at_utc=session_raw.get("expires_at_utc"),
                     duration_seconds=session_raw.get("duration_seconds", 0),
                     session_domains=session_raw.get("session_domains", []),
+                    session_services=session_raw.get("session_services", []),
                     boot_id=session_raw.get("boot_id"),
                 ),
                 hmac_signature=stored_sig,

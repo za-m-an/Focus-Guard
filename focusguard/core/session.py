@@ -60,6 +60,7 @@ class SessionManager:
         expires_at_utc: datetime.datetime,
         duration_seconds: int,
         domains: list[str],
+        services: list[str] | None = None,
         now: datetime.datetime | None = None,
     ) -> SessionState:
         """
@@ -83,6 +84,7 @@ class SessionManager:
             expires_at_utc=expires_at_utc.isoformat(),
             duration_seconds=duration_seconds,
             session_domains=list(domains),
+            session_services=list(services or []),
             boot_id=boot_id,
         )
         return self.state
@@ -141,4 +143,6 @@ class SessionManager:
             "remaining_formatted": format_remaining_seconds(rem),
             "domains": self.state.session_domains,
             "domain_count": len(self.state.session_domains),
+            "services": getattr(self.state, "session_services", []),
+            "service_count": len(getattr(self.state, "session_services", [])),
         }

@@ -171,9 +171,86 @@ Any attempt to `remove`, `edit`, or `stop` during the locked window is rejected.
 
 ---
 
+### 4. Service-Level Distraction Blocking (Web & Mobile Apps)
+
+Instead of manually guessing CDN and API domains for complex platforms, block entire services across browsers and native iOS/Android mobile apps:
+
+```bash
+# List all registered distraction platforms and status
+focusguard services
+
+# Permanently block or unblock an entire service
+focusguard service block instagram
+focusguard service block tiktok
+focusguard service unblock tiktok
+
+# Start a locked session specifically targeting selected services
+focusguard start --duration 3h --services youtube,instagram,reddit
+```
+
+Registered services encompass primary web portals, background mobile API endpoints, and media delivery CDNs:
+- **YouTube** (Web, iOS/Android apps, `googlevideo.com`, `ytimg.com`)
+- **Instagram** (Web, mobile apps, Reels, Stories, `cdninstagram.com`)
+- **Facebook** (Web, Messenger, Graph APIs, `fbcdn.net`)
+- **TikTok** (Web, native apps, video delivery CDNs)
+- **Reddit** (Web, official mobile app, `redd.it`, image/video CDNs)
+- **Twitter / X** (`twitter.com`, `x.com`, `twimg.com`, API gateways)
+- **Netflix & Twitch** (Full web and streaming client endpoints)
+
+---
+
+### 5. VPN & Encrypted DNS Bypass Resistance
+
+To prevent casual circumvention of focus sessions via commercial VPNs or encrypted DNS resolvers:
+
+```bash
+# View bypass defense status and hardening levels
+focusguard bypass-status
+```
+```text
+BYPASS RESISTANCE & CIRCUMVENTION DEFENSE
+──────────────────────────────────────────────────────────────────────────
+Overall Hardening:     ACTIVE (HARDENED)
+
+DNS Bypass (Port 53):  PROTECTED
+DoT Bypass (Port 853): PROTECTED
+DoH Bypass (HTTPS):    PROTECTED (10 resolvers sinkholed)
+Known VPN Endpoints:   BLOCKED (11 commercial providers)
+Common Tunnels:        RESTRICTED (WireGuard: 51820, OpenVPN: 1194, IPsec)
+IPv6 Circumvention:    PROTECTED
+Proxy Endpoints:       PARTIALLY PROTECTED
+──────────────────────────────────────────────────────────────────────────
+Note: FocusGuard provides robust defense against casual circumvention on
+authorized private networks. Custom tunnels or cellular data remain out-of-scope.
+```
+
+---
+
+### 6. Connected Device Discovery (`focusguard devices`)
+
+Inspect all active client devices communicating through the FocusGuard appliance:
+
+```bash
+focusguard devices
+```
+```text
+CONNECTED & ACTIVE NETWORK CLIENTS
+──────────────────────────────────────────────────────────────────────────
+DEVICE             IP ADDRESS       STATUS    QUERIES   BLOCKED   LAST SEEN
+──────────────────────────────────────────────────────────────────────────
+MacBook-Pro.lan    192.168.1.15     ACTIVE    842       290       2026-09-09 20:41:12
+Pixel-8.lan        192.168.1.22     ACTIVE    390       12        2026-09-09 20:40:55
+iPad-Air.lan       192.168.1.30     ACTIVE    188       87        2026-09-09 20:38:19
+Smart-TV.lan       192.168.1.45     IDLE      45        0         2026-09-09 19:12:00
+──────────────────────────────────────────────────────────────────────────
+Total Active Clients: 3 (Active within 15 minutes)
+```
+
+---
+
 ## Live Network Flow Monitoring (`focusguard monitor`)
 
-Watch DNS queries and network blocking decisions across your LAN in real-time as devices browse:
+Watch DNS queries, service matches, and bypass events across your LAN in real-time as devices browse:
 
 ```bash
 focusguard monitor
@@ -181,19 +258,21 @@ focusguard monitor
 ```text
 FOCUSGUARD LIVE NETWORK MONITOR
 ──────────────────────────────────────────────────────────────────────────
-TIME       DEVICE            DESTINATION                ACTION    REASON
+TIME       DEVICE            DESTINATION                ACTION     REASON
 ──────────────────────────────────────────────────────────────────────────
-20:14:02   192.168.1.15      youtube.com                BLOCKED   blocked_by_policy
-20:14:03   192.168.1.15      googlevideo.com            BLOCKED   blocked_by_policy
-20:14:04   192.168.1.22      github.com                 ALLOWED   permitted
-20:14:05   192.168.1.15      stackoverflow.com          ALLOWED   permitted
-20:14:06   192.168.1.30      tiktok.com                 BLOCKED   blocked_by_policy
+20:14:02   192.168.1.15      youtube.com                BLOCKED    Service: YouTube
+20:14:03   192.168.1.15      rr5.googlevideo.com        BLOCKED    Service: YouTube
+20:14:04   192.168.1.22      github.com                 ALLOWED    No active rule matched
+20:14:05   192.168.1.15      cloudflare-dns.com         BLOCKED    DoH Bypass: Cloudflare DoH
+20:14:06   192.168.1.30      api.nordvpn.com            BLOCKED    VPN Bypass: NordVPN
+──────────────────────────────────────────────────────────────────────────
 ```
 
 ### Filters:
 - Show only blocked requests: `focusguard monitor --blocked`
 - Filter by device IP: `focusguard monitor --device 192.168.1.15`
 - Filter by domain name: `focusguard monitor --domain youtube`
+- Filter by distraction service: `focusguard monitor --service instagram`
 
 ---
 
@@ -233,6 +312,7 @@ Add `--session` to scope metrics specifically to the current active focus sessio
 focusguard stats --session
 ```
 
+
 ---
 
 ## Automatic Network Enforcement & Gateway Mode
@@ -267,18 +347,25 @@ focusguard
 ```
 ```text
 FocusGuard Appliance Console
-────────────────────────────────
-1. View Appliance Status
-2. List Blocked Domains
-3. Add Blocked Domain
-4. Remove Blocked Domain
-5. Start Locked Focus Session
-6. View Active Session
-7. Run Diagnostics (Doctor)
-8. View Audit Logs
-9. Exit
-────────────────────────────────
-Select an option [1-9]: 
+─────────────────────────────────────────────
+ 1. View Appliance Status
+ 2. List Blocked Domains
+ 3. Add Blocked Domain
+ 4. Remove Blocked Domain
+ 5. Start Locked Focus Session
+ 6. View Active Session
+ 7. Stop Active Session
+ 8. Live Network Monitor
+ 9. Traffic Analytics & Stats
+10. Gateway Redirection
+11. Manage Distraction Services
+12. Discovered Network Devices
+13. Bypass Defense & VPN Resistance
+14. View Audit Logs
+15. Exit
+─────────────────────────────────────────────
+Select an option [1-15]: 
+
 ```
 
 ---

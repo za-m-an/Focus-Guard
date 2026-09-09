@@ -15,6 +15,9 @@ from focusguard.cli.formatter import (
     format_monitor_header,
     format_monitor_row,
     format_stats_card,
+    format_bypass_status,
+    format_devices_table,
+    format_services_card,
     BOLD,
     CYAN,
     GREEN,
@@ -44,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     # add
     add_parser = subparsers.add_parser("add", help="Add a domain to permanent blocklist")
     add_parser.add_argument("domain", help="Domain to block (e.g. youtube.com)")
-    add_parser.add_argument("--no-companions", action="store_true", help="Do not include companion CDN/API domains")
+    add_parser.add_argument("--no-companions", action="store_true", help="Do not auto-include companion CDN/API domains")
 
     # remove
     rem_parser = subparsers.add_parser("remove", help="Remove a domain from permanent blocklist")
@@ -53,11 +56,27 @@ def build_parser() -> argparse.ArgumentParser:
     # list
     subparsers.add_parser("list", help="List configured and active blocked domains")
 
+    # services
+    subparsers.add_parser("services", help="List all available distraction platforms and their block status")
+
+    # service
+    svc_parser = subparsers.add_parser("service", help="Manage whole distraction services (e.g. 'instagram', 'youtube')")
+    svc_parser.add_argument("action", choices=["list", "block", "unblock"], help="Service action: list, block, unblock")
+    svc_parser.add_argument("name", nargs="?", help="Service identifier (e.g. youtube, instagram, tiktok)")
+
+    # devices
+    subparsers.add_parser("devices", help="Display all client devices discovered traversing the enforcement point")
+
+    # bypass / bypass-status
+    subparsers.add_parser("bypass", help="Display VPN, DoH, and tunnel circumvention resistance status")
+    subparsers.add_parser("bypass-status", help="Display VPN, DoH, and tunnel circumvention resistance status")
+
     # start
     start_parser = subparsers.add_parser("start", help="Start a locked focus session")
     start_parser.add_argument("-d", "--duration", help="Session duration (e.g. '4h', '45m', '1h30m')")
     start_parser.add_argument("-u", "--until", help="Session end time (e.g. '23:30' or '2026-09-10T23:30:00')")
     start_parser.add_argument("--domains", nargs="+", help="Specific domains for this session (default: permanent blocklist)")
+    start_parser.add_argument("--services", nargs="+", help="Specific distraction services to block (e.g. 'youtube', 'instagram')")
     start_parser.add_argument("--no-companions", action="store_true", help="Do not include companion domains")
 
     # stop
@@ -79,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     mon_parser.add_argument("-b", "--blocked", action="store_true", help="Show only blocked queries")
     mon_parser.add_argument("--device", help="Filter events by client device IP")
     mon_parser.add_argument("--domain", help="Filter events by domain name substring")
+    mon_parser.add_argument("--service", help="Filter events by distraction service name (e.g. 'instagram')")
 
     # stats
     stats_parser = subparsers.add_parser("stats", help="Display traffic analytics and blocking statistics")
@@ -105,6 +125,7 @@ def cmd_monitor(client: FocusGuardClient, args: argparse.Namespace) -> None:
         "blocked_only": args.blocked,
         "device": args.device or "",
         "domain": args.domain or "",
+        "service": getattr(args, "service", "") or "",
     }
 
     try:
@@ -198,6 +219,40 @@ def cmd_gateway(client: FocusGuardClient, args: argparse.Namespace) -> None:
             print(f"{GREEN}✓ {res}{RESET}")
 
 
+def cmd_services(client: FocusGuardClient) -> None:
+    """Display registered distraction services and their status."""
+    services = client.send_command("services_list")
+    print(format_services_card(services))
+
+
+def cmd_service(client: FocusGuardClient, args: argparse.Namespace) -> None:
+    """Manage whole-service distraction policies."""
+    action = args.action
+    if action == "list" or not args.name:
+        cmd_services(client)
+        return
+
+    name = args.name.lower()
+    if action == "block":
+        res = client.send_command("service_block", {"service": name})
+        print(f"\n{GREEN}✓ Permanently blocked service:{RESET} {BOLD}{res.get('name', name)}{RESET} ({res.get('domain_count', 0)} domains/APIs)\n")
+    elif action == "unblock":
+        res = client.send_command("service_unblock", {"service": name})
+        print(f"\n{GREEN}✓ Removed service from permanent blocklist:{RESET} {BOLD}{res}{RESET}\n")
+
+
+def cmd_devices(client: FocusGuardClient) -> None:
+    """Display discovered client devices traversing the enforcement point."""
+    devices = client.send_command("devices_list")
+    print(format_devices_table(devices))
+
+
+def cmd_bypass(client: FocusGuardClient) -> None:
+    """Display technical VPN and encrypted DNS circumvention status."""
+    status = client.send_command("bypass_status")
+    print("\n" + format_bypass_status(status) + "\n")
+
+
 def cmd_network(client: FocusGuardClient) -> None:
     """Print network routing and router DHCP configuration guide."""
     report = client.send_command("doctor")
@@ -266,6 +321,18 @@ def main() -> None:
                     print(f"  • {d}")
             print()
 
+        elif args.command == "services":
+            cmd_services(client)
+
+        elif args.command == "service":
+            cmd_service(client, args)
+
+        elif args.command == "devices":
+            cmd_devices(client)
+
+        elif args.command in ("bypass", "bypass-status"):
+            cmd_bypass(client)
+
         elif args.command == "start":
             if not args.duration and not args.until:
                 print(f"{YELLOW}Specify either --duration (e.g. -d 4h) or --until (e.g. -u 23:30).{RESET}")
@@ -275,6 +342,7 @@ def main() -> None:
                 "duration": args.duration,
                 "until": args.until,
                 "domains": args.domains,
+                "services": args.services,
                 "include_companions": not args.no_companions,
             })
             print("\n" + format_locked_banner(

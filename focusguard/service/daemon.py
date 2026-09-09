@@ -13,6 +13,8 @@ from focusguard.core.policy import PolicyEngine
 from focusguard.dns.resolver import DNSResolver
 from focusguard.dns.server import DNSServer
 from focusguard.dns.sinkhole import DomainSinkhole
+from focusguard.network.bypass import BypassResistanceManager
+from focusguard.network.devices import DeviceTracker
 from focusguard.network.diagnostics import DiagnosticsRunner
 from focusguard.network.gateway import NetworkGatewayManager
 from focusguard.service.event_bus import EventBus
@@ -42,10 +44,13 @@ class FocusGuardDaemon:
             db_path=Path(data_dir) / "events.db" if data_dir else None
         )
         self.sinkhole = DomainSinkhole(block_doh=True)
+        self.bypass_mgr = BypassResistanceManager()
+        self.device_tracker = DeviceTracker()
         self.policy_engine = PolicyEngine(
             sinkhole=self.sinkhole,
             state_manager=self.state_mgr,
             log_store=self.log_store,
+            bypass_manager=self.bypass_mgr,
         )
 
         self.event_bus = EventBus()
@@ -82,6 +87,7 @@ class FocusGuardDaemon:
             on_block_callback=on_blocked_query,
             flow_callback=on_flow_recorded,
             event_bus=self.event_bus,
+            device_tracker=self.device_tracker,
         )
 
         self.diagnostics = DiagnosticsRunner(self.policy_engine, gateway_manager=self.gateway)
@@ -92,6 +98,7 @@ class FocusGuardDaemon:
             event_bus=self.event_bus,
             log_store=self.log_store,
             gateway_manager=self.gateway,
+            device_tracker=self.device_tracker,
         )
         self._running = False
 

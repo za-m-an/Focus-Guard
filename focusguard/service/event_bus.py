@@ -16,6 +16,8 @@ class FlowEvent:
     action: str          # "BLOCKED" or "ALLOWED"
     reason: str
     session_active: bool = False
+    service: str | None = None
+    bypass_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

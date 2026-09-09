@@ -81,3 +81,32 @@ def test_reboot_recovery(tmp_path: Path):
     blocked_ig, _ = engine2.sinkhole.is_blocked("instagram.com")
     assert blocked_fb is True
     assert blocked_ig is True
+
+
+def test_permanent_service_blocking(policy_engine: PolicyEngine):
+    # Block Instagram service
+    added = policy_engine.block_permanent_service("instagram")
+    assert "instagram" in policy_engine.config.permanent_services
+    assert added["id"] == "instagram"
+    assert added["name"] == "Instagram"
+
+
+    # Domain evaluation should now identify it as blocked by service policy
+    action, reason = policy_engine.evaluate_domain("instagram.com")
+    assert action == "BLOCKED"
+    assert "Instagram" in reason
+
+
+    # Unblock Instagram service
+    removed = policy_engine.unblock_permanent_service("instagram")
+    assert "instagram" not in policy_engine.config.permanent_services
+
+
+def test_locked_session_rejects_service_unblock(policy_engine: PolicyEngine):
+    policy_engine.block_permanent_service("tiktok")
+    policy_engine.start_focus_session(duration_str="1h", custom_domains=[])
+
+    assert policy_engine.session_mgr.is_locked
+    with pytest.raises(LockedSessionError):
+        policy_engine.unblock_permanent_service("tiktok")
+

@@ -11,6 +11,9 @@ from focusguard.cli.formatter import (
     format_monitor_header,
     format_monitor_row,
     format_stats_card,
+    format_bypass_status,
+    format_devices_table,
+    format_services_card,
     BOLD,
     CYAN,
     GREEN,
@@ -36,11 +39,14 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
         print(" 8. Live Network Flow Monitor")
         print(" 9. Traffic Analytics & Statistics")
         print("10. Gateway & Transparent Redirection")
-        print("11. View Operational Audit Logs")
-        print("12. Exit")
+        print("11. Distraction Services (YouTube, IG, etc.)")
+        print("12. Discovered Network Client Devices")
+        print("13. VPN & Encrypted DNS Bypass Defense")
+        print("14. View Operational Audit Logs")
+        print("15. Exit")
         print(f"{CYAN}{'─' * 38}{RESET}")
 
-        choice = input(f"{BOLD}Select an option [1-12]: {RESET}").strip()
+        choice = input(f"{BOLD}Select an option [1-15]: {RESET}").strip()
 
         try:
             if choice == "1":
@@ -156,6 +162,32 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                     print(f"{GREEN}✓ {res}{RESET}")
 
             elif choice == "11":
+                services = client.send_command("services_list")
+                print(format_services_card(services))
+                print("1. Block a service")
+                print("2. Unblock a service")
+                print("3. Return to main menu")
+                s_opt = input("Select [1-3]: ").strip()
+                if s_opt == "1":
+                    s_name = input("Enter service identifier (e.g. youtube, instagram): ").strip()
+                    if s_name:
+                        res = client.send_command("service_block", {"service": s_name})
+                        print(f"{GREEN}✓ Blocked service: {res.get('name')}{RESET}")
+                elif s_opt == "2":
+                    s_name = input("Enter service identifier to unblock: ").strip()
+                    if s_name:
+                        res = client.send_command("service_unblock", {"service": s_name})
+                        print(f"{GREEN}✓ Unblocked service: {res}{RESET}")
+
+            elif choice == "12":
+                devices = client.send_command("devices_list")
+                print(format_devices_table(devices))
+
+            elif choice == "13":
+                bypass = client.send_command("bypass_status")
+                print("\n" + format_bypass_status(bypass) + "\n")
+
+            elif choice == "14":
                 logs = client.send_command("logs", {"limit": 15})
                 print(f"\n{BOLD}Recent Events (Newest First):{RESET}")
                 for evt in logs:
@@ -165,12 +197,12 @@ def run_interactive_menu(client: FocusGuardClient) -> None:
                     det = evt.get("details", "")
                     print(f"  {DIM}{ts}{RESET} [{cat}] {BOLD}{act}{RESET}: {det}")
 
-            elif choice in ("12", "q", "exit"):
+            elif choice in ("15", "q", "exit"):
                 print("Goodbye.")
                 break
 
             else:
-                print(f"{RED}Invalid selection. Please choose 1-12.{RESET}")
+                print(f"{RED}Invalid selection. Please choose 1-15.{RESET}")
 
         except DaemonError as e:
             print(f"\n{RED}{BOLD}ERROR:{RESET} {e}\n")

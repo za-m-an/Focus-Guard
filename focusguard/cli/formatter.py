@@ -202,3 +202,99 @@ def format_stats_card(stats: dict[str, Any], session_info: dict[str, Any] | None
 
     lines.append(f"{CYAN}{'═' * 52}{RESET}")
     return "\n".join(lines)
+
+
+def format_bypass_status(bypass: dict[str, Any]) -> str:
+    """Format technical bypass resistance status card."""
+    overall = bypass.get("overall", "PARTIAL")
+    dns_by = bypass.get("dns_bypass", "PROTECTED")
+    dot_by = bypass.get("dot_bypass", "PROTECTED")
+    doh_by = bypass.get("doh_bypass", "PROTECTED")
+    vpns = bypass.get("known_vpns", "BLOCKED")
+    tunnels = bypass.get("common_tunnels", "RESTRICTED")
+    ipv6 = bypass.get("ipv6_bypass", "PROTECTED")
+    proxies = bypass.get("proxy_endpoints", "PARTIALLY PROTECTED")
+
+    def colorize(val: str) -> str:
+        if val in ("PROTECTED", "BLOCKED", "RESTRICTED", "ACTIVE (HARDENED)", "ACTIVE (STANDARD)"):
+            return f"{GREEN}{BOLD}{val}{RESET}"
+        elif "PARTIAL" in val or "MONITORED" in val:
+            return f"{YELLOW}{BOLD}{val}{RESET}"
+        else:
+            return f"{RED}{BOLD}{val}{RESET}"
+
+    lines = [
+        f"{CYAN}{BOLD}BYPASS RESISTANCE & CIRCUMVENTION DEFENSE{RESET}",
+        f"{CYAN}{'─' * 44}{RESET}",
+        f"  {BOLD}DNS bypass:{RESET}        {colorize(dns_by)}",
+        f"  {BOLD}DoT (Port 853):{RESET}    {colorize(dot_by)}",
+        f"  {BOLD}DoH (Port 443):{RESET}    {colorize(doh_by)}",
+        f"  {BOLD}Known VPNs:{RESET}        {colorize(vpns)}",
+        f"  {BOLD}Common tunnels:{RESET}    {colorize(tunnels)}",
+        f"  {BOLD}IPv6 bypass:{RESET}       {colorize(ipv6)}",
+        f"  {BOLD}Proxy endpoints:{RESET}   {colorize(proxies)}",
+        f"{CYAN}{'─' * 44}{RESET}",
+        f"  {BOLD}Overall Defense:{RESET}   {colorize(overall)}",
+        "",
+        f"  {DIM}Tracked VPN Providers: {bypass.get('vpn_providers_tracked', 11)}{RESET}",
+        f"  {DIM}Tracked DoH Resolvers: {bypass.get('doh_resolvers_tracked', 7)}{RESET}",
+        f"  {DIM}Note: Casual VPN circumvention is resisted at network and DNS layers.{RESET}",
+    ]
+    return "\n".join(lines)
+
+
+def format_devices_table(devices: list[dict[str, Any]]) -> str:
+    """Format table of active client devices discovered by the appliance."""
+    lines = [
+        f"\n{CYAN}{BOLD}FOCUSGUARD DISCOVERED CLIENT DEVICES{RESET}",
+        f"{CYAN}{'─' * 74}{RESET}",
+        f"{BOLD}{'DEVICE':<20} {'ADDRESS':<17} {'STATUS':<12} {'QUERIES':<10} {'BLOCKED'}{RESET}",
+        f"{CYAN}{'─' * 74}{RESET}",
+    ]
+
+    if not devices:
+        lines.append("  (No client devices recorded traversing the enforcement point yet)")
+    else:
+        for dev in devices:
+            name = dev.get("hostname", "Unknown")[:19]
+            ip = dev.get("ip", "")[:15]
+            active = dev.get("active", False)
+            status_str = f"{GREEN}ACTIVE{RESET}" if active else f"{DIM}IDLE{RESET}"
+            total = str(dev.get("total_queries", 0))
+            blocked = dev.get("blocked_queries", 0)
+            blocked_str = f"{RED}{blocked}{RESET}" if blocked > 0 else "0"
+            lines.append(f"{name:<20} {ip:<17} {status_str:<21} {total:<10} {blocked_str}")
+
+    lines.append(f"{CYAN}{'─' * 74}{RESET}\n")
+    return "\n".join(lines)
+
+
+def format_services_card(services: list[dict[str, Any]]) -> str:
+    """Format distraction service registry and current block status."""
+    lines = [
+        f"\n{CYAN}{BOLD}FocusGuard Distraction Services Registry{RESET}",
+        f"{CYAN}{'─' * 60}{RESET}",
+        f"{BOLD}{'SERVICE':<14} {'CATEGORY':<18} {'STATUS':<12} {'DOMAINS'}{RESET}",
+        f"{CYAN}{'─' * 60}{RESET}",
+    ]
+
+    for svc in services:
+        sid = svc.get("id", "")
+        name = svc.get("name", sid)[:13]
+        cat = svc.get("category", "")[:16]
+        blocked = svc.get("is_blocked", False)
+        scoped = svc.get("is_session_scoped", False)
+        if blocked:
+            status = f"{RED}{BOLD}BLOCKED (LOCKED){RESET}" if scoped else f"{RED}{BOLD}BLOCKED{RESET}"
+        else:
+            status = f"{GREEN}ALLOWED{RESET}"
+        d_cnt = svc.get("domain_count", 0)
+        lines.append(f"{name:<14} {cat:<18} {status:<21} {d_cnt} domains")
+
+    lines.extend([
+        f"{CYAN}{'─' * 60}{RESET}",
+        f"  {DIM}To block a service permanently:  focusguard service block <name>{RESET}",
+        f"  {DIM}To block during a focus session: focusguard start -d 2h --services youtube instagram{RESET}\n",
+    ])
+    return "\n".join(lines)
+

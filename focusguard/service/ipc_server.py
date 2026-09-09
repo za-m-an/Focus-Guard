@@ -34,12 +34,14 @@ class IPCServer:
         event_bus: EventBus | None = None,
         log_store: EventLogStore | None = None,
         gateway_manager: Any = None,
+        device_tracker: Any = None,
     ) -> None:
         self.policy_engine = policy_engine
         self.diagnostics_runner = diagnostics_runner
         self.event_bus = event_bus or EventBus()
         self.log_store = log_store or (policy_engine.log_store if hasattr(policy_engine, "log_store") else None)
         self.gateway_manager = gateway_manager
+        self.device_tracker = device_tracker
         self.socket_path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
         self._server: asyncio.Server | None = None
         self._is_unix = hasattr(socket, "AF_UNIX")
@@ -93,11 +95,13 @@ class IPCServer:
                 duration = params.get("duration")
                 until = params.get("until")
                 custom_domains = params.get("domains")
+                custom_services = params.get("services")
                 companions = params.get("include_companions", True)
                 summary = self.policy_engine.start_focus_session(
                     duration_str=duration,
                     until_str=until,
                     custom_domains=custom_domains,
+                    custom_services=custom_services,
                     include_companions=companions,
                 )
                 return {"ok": True, "result": summary}
@@ -108,6 +112,32 @@ class IPCServer:
 
             elif action == "session":
                 return {"ok": True, "result": self.policy_engine.session_mgr.get_summary()}
+
+            elif action == "services_list":
+                return {"ok": True, "result": self.policy_engine.get_services_status()}
+
+            elif action == "service_block":
+                service = params.get("service", "")
+                res = self.policy_engine.block_permanent_service(service)
+                return {"ok": True, "result": res}
+
+            elif action == "service_unblock":
+                service = params.get("service", "")
+                res = self.policy_engine.unblock_permanent_service(service)
+                return {"ok": True, "result": res}
+
+            elif action == "devices_list":
+                if self.device_tracker:
+                    devices = self.device_tracker.get_all_devices()
+                else:
+                    devices = []
+                return {"ok": True, "result": devices}
+
+            elif action == "bypass_status":
+                gw_active = False
+                if self.gateway_manager:
+                    gw_active = self.gateway_manager.is_transparent_redirection_active()
+                return {"ok": True, "result": self.policy_engine.bypass_mgr.get_bypass_status(gateway_active=gw_active)}
 
             elif action == "logs":
                 limit = int(params.get("limit", 50))
@@ -171,6 +201,7 @@ class IPCServer:
         blocked_only = bool(params.get("blocked_only", False))
         device_filter = params.get("device", "").strip()
         domain_filter = params.get("domain", "").strip().lower()
+        service_filter = params.get("service", "").strip().lower()
 
         queue = self.event_bus.subscribe(maxsize=200)
 
@@ -195,6 +226,8 @@ class IPCServer:
                 if device_filter and event.client_ip != device_filter:
                     continue
                 if domain_filter and domain_filter not in event.domain.lower():
+                    continue
+                if service_filter and (not event.service or service_filter not in event.service.lower()):
                     continue
 
                 event.session_active = self.policy_engine.session_mgr.is_locked

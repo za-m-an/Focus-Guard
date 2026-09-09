@@ -58,6 +58,7 @@ class DNSServer:
         on_block_callback: Callable[[str, str, int], None] | None = None,
         flow_callback: Callable[[str, str, int, str, str], None] | None = None,
         event_bus: Any = None,
+        device_tracker: Any = None,
     ) -> None:
         self.sinkhole = sinkhole
         self.resolver = resolver
@@ -67,14 +68,14 @@ class DNSServer:
         self.on_block_callback = on_block_callback
         self.flow_callback = flow_callback
         self.event_bus = event_bus
+        self.device_tracker = device_tracker
         self._is_running = False
         self._udp_transports: list[asyncio.DatagramTransport] = []
         self._tcp_servers: list[asyncio.Server] = []
 
     async def handle_query(self, query_bytes: bytes, client_ip: str) -> bytes | None:
         """
-        Processes a raw DNS packet, checks sinkhole, or forwards to upstream.
-        Broadcasting real-time flow events to the monitor event bus and audit store.
+        Parse raw DNS query, evaluate against sinkhole policy, and return sinkhole or upstream answer.
         """
         try:
             msg = DNSMessage.parse(query_bytes)
@@ -96,6 +97,33 @@ class DNSServer:
         is_blocked, reason = self.sinkhole.is_blocked(qname)
         action = "BLOCKED" if is_blocked else "ALLOWED"
 
+        # Record query on client device tracker
+        if self.device_tracker:
+            try:
+                self.device_tracker.record_query(client_ip, is_blocked=is_blocked)
+            except Exception:
+                pass
+
+        # Identify service or bypass attempt for enriched observability
+        service_name: str | None = None
+        bypass_type: str | None = None
+        if is_blocked:
+            try:
+                from focusguard.network.bypass import BypassResistanceManager
+                from focusguard.core.services import match_service_by_domain
+                bypass_mgr = BypassResistanceManager()
+                bypass = bypass_mgr.identify_bypass_attempt(qname)
+                if bypass:
+                    bypass_type, prov = bypass
+                    reason = f"{bypass_type} ({prov})"
+                else:
+                    svc = match_service_by_domain(qname)
+                    if svc:
+                        service_name = svc
+                        reason = f"Service: {svc}"
+            except Exception:
+                pass
+
         # Broadcast to real-time monitor subscribers
         if self.event_bus:
             try:
@@ -108,6 +136,8 @@ class DNSServer:
                     qtype=q.qtype,
                     action=action,
                     reason=reason,
+                    service=service_name,
+                    bypass_type=bypass_type,
                 ))
             except Exception:
                 pass

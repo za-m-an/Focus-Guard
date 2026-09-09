@@ -1,0 +1,39 @@
+[Unit]
+Description=FocusGuard Network-Wide Distraction Blocker Appliance
+Documentation=https://github.com/za-m-an/Focus-Guard
+After=network.target network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=focusguard
+Group=focusguard
+
+# Grant permission to bind low ports (port 53 DNS) without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Security Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+
+# Runtime & State Directories
+RuntimeDirectory=focusguard
+RuntimeDirectoryMode=0775
+ReadWritePaths=/var/lib/focusguard /var/log/focusguard /run/focusguard
+
+ExecStart=/usr/local/bin/focusguardd
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=focusguard
+
+[Install]
+WantedBy=multi-user.target

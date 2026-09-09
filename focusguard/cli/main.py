@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -136,12 +137,64 @@ def cmd_gateway(client: FocusGuardClient, args: argparse.Namespace) -> None:
         print(f"{CYAN}{'─' * 42}{RESET}\n")
 
     elif action == "enable":
-        res = client.send_command("gateway_enable")
-        print(f"{GREEN}✓ {res}{RESET}")
+        # If running as root (or sudo), configure iptables directly in root context
+        # for guaranteed immediate kernel/network application.
+        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+        if is_root:
+            from focusguard.network.gateway import NetworkGatewayManager
+            try:
+                gw_info = client.send_command("gateway_status")
+                dns_port = gw_info.get("dns_port", 53)
+            except Exception:
+                dns_port = 53
+            mgr = NetworkGatewayManager(dns_port=dns_port)
+            success, msg = mgr.enable_transparent_redirection()
+            if not success:
+                raise DaemonError(msg)
+            print(f"{GREEN}✓ {msg}{RESET}")
+        else:
+            try:
+                res = client.send_command("gateway_enable")
+                print(f"{GREEN}✓ {res}{RESET}")
+            except DaemonError as e:
+                err_str = str(e).lower()
+                if "root privileges" in err_str or "permission denied" in err_str:
+                    print(f"\n{RED}{BOLD}ERROR:{RESET} Enabling gateway redirection requires root privileges.")
+                    print(f"{YELLOW}Please run with sudo: {BOLD}sudo focusguard gateway enable{RESET}\n", file=sys.stderr)
+                    sys.exit(2)
+                raise
 
     elif action == "disable":
-        res = client.send_command("gateway_disable")
-        print(f"{GREEN}✓ {res}{RESET}")
+        # Strict anti-impulse lock: cannot disable redirection if a focus session is locked!
+        try:
+            status = client.send_command("status")
+            if status.get("session_status") == "LOCKED":
+                print(
+                    f"\n{RED}{BOLD}LOCKED FOCUS SESSION ACTIVE:{RESET} "
+                    f"Transparent redirection cannot be disabled while a focus session is locked!\n",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        except DaemonError as e:
+            if getattr(e, "is_locked", False):
+                print(
+                    f"\n{RED}{BOLD}LOCKED FOCUS SESSION ACTIVE:{RESET} "
+                    f"Transparent redirection cannot be disabled while a focus session is locked!\n",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+
+        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+        if is_root:
+            from focusguard.network.gateway import NetworkGatewayManager
+            mgr = NetworkGatewayManager()
+            success, msg = mgr.disable_transparent_redirection()
+            if not success:
+                raise DaemonError(msg)
+            print(f"{GREEN}✓ {msg}{RESET}")
+        else:
+            res = client.send_command("gateway_disable")
+            print(f"{GREEN}✓ {res}{RESET}")
 
 
 def cmd_network(client: FocusGuardClient) -> None:

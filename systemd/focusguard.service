@@ -9,15 +9,15 @@ Type=simple
 User=focusguard
 Group=focusguard
 
-# Grant permission to bind low ports (port 53 DNS) without running as root
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# Grant permission to bind low ports (port 53 DNS) and configure network redirection without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
 
 # Security Hardening
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
-ProtectKernelTunables=true
+ProtectKernelTunables=false
 ProtectKernelModules=true
 ProtectControlGroups=true
 PrivateTmp=true

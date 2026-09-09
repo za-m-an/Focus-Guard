@@ -84,9 +84,6 @@ class NetworkGatewayManager:
         if not self._has_iptables:
             return False, "iptables utility not found on this system."
 
-        if os.geteuid() != 0 if hasattr(os, "geteuid") else False:
-            return False, "Enabling network gateway enforcement requires root privileges."
-
         try:
             self.enable_ip_forwarding()
 
@@ -99,14 +96,14 @@ class NetworkGatewayManager:
                 "iptables", "-t", "nat", "-A", CHAIN_REDIRECT,
                 "-p", "udp", "--dport", "53",
                 "-j", "REDIRECT", "--to-ports", str(self.dns_port)
-            ], check=True)
+            ], stderr=subprocess.PIPE, check=True)
 
             # Redirect TCP 53 to local port
             subprocess.run([
                 "iptables", "-t", "nat", "-A", CHAIN_REDIRECT,
                 "-p", "tcp", "--dport", "53",
                 "-j", "REDIRECT", "--to-ports", str(self.dns_port)
-            ], check=True)
+            ], stderr=subprocess.PIPE, check=True)
 
             # Ensure jump from PREROUTING table exists
             check_nat = subprocess.run(
@@ -114,7 +111,7 @@ class NetworkGatewayManager:
                 stderr=subprocess.PIPE, check=False
             )
             if check_nat.returncode != 0:
-                subprocess.run(["iptables", "-t", "nat", "-I", "PREROUTING", "1", "-j", CHAIN_REDIRECT], check=True)
+                subprocess.run(["iptables", "-t", "nat", "-I", "PREROUTING", "1", "-j", CHAIN_REDIRECT], stderr=subprocess.PIPE, check=True)
 
             # 2. Create FILTER chain for DoT (port 853) blocking
             subprocess.run(["iptables", "-N", CHAIN_FILTER], stderr=subprocess.PIPE, check=False)
@@ -123,7 +120,7 @@ class NetworkGatewayManager:
                 "iptables", "-A", CHAIN_FILTER,
                 "-p", "tcp", "--dport", "853",
                 "-j", "REJECT"
-            ], check=True)
+            ], stderr=subprocess.PIPE, check=True)
 
             # Ensure jump from FORWARD table exists
             check_fwd = subprocess.run(
@@ -131,13 +128,19 @@ class NetworkGatewayManager:
                 stderr=subprocess.PIPE, check=False
             )
             if check_fwd.returncode != 0:
-                subprocess.run(["iptables", "-I", "FORWARD", "1", "-j", CHAIN_FILTER], check=True)
+                subprocess.run(["iptables", "-I", "FORWARD", "1", "-j", CHAIN_FILTER], stderr=subprocess.PIPE, check=True)
 
             logger.info("Transparent network redirection enabled successfully.")
             return True, "Transparent DNS interception and DoT blocking active."
 
         except subprocess.CalledProcessError as e:
-            err_msg = f"Failed to apply iptables redirection: {e}"
+            err_output = (e.stderr.decode().strip() if e.stderr else "").strip()
+            if not err_output:
+                err_output = str(e)
+            if "permission denied" in err_output.lower() or "must be root" in err_output.lower():
+                err_msg = "Enabling network gateway enforcement requires root privileges (run with sudo)."
+            else:
+                err_msg = f"Failed to apply iptables redirection: {err_output}"
             logger.error(err_msg)
             return False, err_msg
         except Exception as e:
@@ -163,6 +166,11 @@ class NetworkGatewayManager:
 
             logger.info("Transparent network redirection disabled.")
             return True, "Transparent DNS interception removed cleanly."
+        except subprocess.CalledProcessError as e:
+            err_output = (e.stderr.decode().strip() if e.stderr else "").strip()
+            if "permission denied" in err_output.lower() or "must be root" in err_output.lower():
+                return False, "Disabling network gateway enforcement requires root privileges (run with sudo)."
+            return False, f"Failed to disable iptables redirection: {err_output or e}"
         except Exception as e:
             return False, str(e)
 

@@ -196,6 +196,16 @@ Registered services encompass primary web portals, background mobile API endpoin
 - **Reddit** (Web, official mobile app, `redd.it`, image/video CDNs)
 - **Twitter / X** (`twitter.com`, `x.com`, `twimg.com`, API gateways)
 - **Netflix & Twitch** (Full web and streaming client endpoints)
+- **Xbox & Game Pass** (`xbox.com`, `xboxlive.com`, `gamepass.com`, Xbox auth & telemetry APIs)
+- **PlayStation & PSN** (`playstation.com`, `playstation.net`, `sonyentertainmentnetwork.com`, PSN APIs)
+- **Google Play Services & Store** (`play.google.com`, `android.clients.google.com`, Play Games)
+- **Steam / Valve** (`steampowered.com`, `steamcommunity.com`, Steam store & CDN delivery)
+- **Discord** (`discord.com`, `discord.gg`, mobile/desktop gateways, media CDNs)
+- **Roblox** (`roblox.com`, `rbxcdn.com`, authentication, games & asset CDNs)
+- **Epic Games & Fortnite** (`epicgames.com`, `fortnite.com`, Unreal Engine & store services)
+- **Nintendo & Switch Online** (`nintendo.com`, `nintendo.net`, eShop & Switch online services)
+- **Spotify** (`spotify.com`, `spoti.fi`, audio streaming CDNs & API endpoints)
+
 
 ---
 

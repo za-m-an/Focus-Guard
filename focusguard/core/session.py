@@ -118,17 +118,18 @@ class SessionManager:
         """Reset state to IDLE after expiration is handled."""
         self.state = SessionState(status="IDLE")
 
-    def assert_not_locked(self) -> None:
+    def assert_not_locked(self, now: datetime.datetime | None = None) -> None:
         """
         Enforce anti-impulse lock: raises LockedSessionError if a session is currently active.
         """
         if self.is_locked:
-            rem = self.get_remaining_seconds()
+            rem = self.get_remaining_seconds(now)
             if rem > 0:
                 raise LockedSessionError(self.state.expires_at_utc or "", rem)
             else:
                 # Expired but not yet formally transitioned
-                self.check_expiration()
+                self.check_expiration(now)
+
 
     def get_summary(self) -> dict[str, Any]:
         """Return human-readable session summary dictionary."""

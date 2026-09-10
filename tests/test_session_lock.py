@@ -21,7 +21,7 @@ def test_session_lock_rejection():
     mgr = SessionManager()
     assert not mgr.is_locked
 
-    now = datetime.datetime(2026, 9, 10, 10, 0, 0, tzinfo=datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
     expires = now + datetime.timedelta(hours=2)
 
     # Start session
@@ -35,7 +35,7 @@ def test_session_lock_rejection():
     assert mgr.is_locked
     # Anti-impulse check: assert_not_locked MUST raise LockedSessionError
     with pytest.raises(LockedSessionError) as exc_info:
-        mgr.assert_not_locked()
+        mgr.assert_not_locked(now=now)
 
     assert "LOCKED FOCUS SESSION IN PROGRESS" in str(exc_info.value)
     assert "Anti-impulse guard active" in str(exc_info.value)
@@ -43,7 +43,7 @@ def test_session_lock_rejection():
 
 def test_session_expiration_and_release():
     mgr = SessionManager()
-    now = datetime.datetime(2026, 9, 10, 10, 0, 0, tzinfo=datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
     expires = now + datetime.timedelta(minutes=30)
 
     mgr.start_session(
@@ -73,7 +73,7 @@ def test_session_expiration_and_release():
 
 def test_clock_rollback_protection():
     mgr = SessionManager()
-    start_time = datetime.datetime(2026, 9, 10, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    start_time = datetime.datetime.now(datetime.timezone.utc)
     expires = start_time + datetime.timedelta(hours=1)
 
     mgr.start_session(
@@ -82,6 +82,7 @@ def test_clock_rollback_protection():
         domains=["reddit.com"],
         now=start_time,
     )
+
 
     # Simulate clock tampering: user rolls back clock to before start_time
     tampered_time = start_time - datetime.timedelta(hours=2)

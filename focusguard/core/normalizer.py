@@ -60,7 +60,90 @@ SERVICE_COMPANIONS: dict[str, list[str]] = {
         "ttvnw.net",
         "jtvnw.net",
     ],
+    "xbox.com": [
+        "xboxlive.com",
+        "xboxservices.com",
+        "gamepass.com",
+        "xboxab.com",
+        "xboxgamestudio.com",
+    ],
+    "xboxlive.com": [
+        "xbox.com",
+        "xboxservices.com",
+        "gamepass.com",
+        "xboxab.com",
+    ],
+    "playstation.com": [
+        "playstation.net",
+        "sonyentertainmentnetwork.com",
+        "playstationnetwork.com",
+        "psn.net",
+        "sie.com",
+    ],
+    "playstation.net": [
+        "playstation.com",
+        "sonyentertainmentnetwork.com",
+        "playstationnetwork.com",
+        "psn.net",
+    ],
+    "play.google.com": [
+        "android.clients.google.com",
+        "playgames.google.com",
+        "market.android.com",
+        "play-lh.googleusercontent.com",
+    ],
+    "steampowered.com": [
+        "steamcommunity.com",
+        "steamgames.com",
+        "steamstatic.com",
+        "steamcontent.com",
+        "steam-chat.com",
+    ],
+    "steamcommunity.com": [
+        "steampowered.com",
+        "steamgames.com",
+        "steamstatic.com",
+        "steamcontent.com",
+    ],
+    "discord.com": [
+        "discord.gg",
+        "discordapp.com",
+        "discordapp.net",
+        "discord.media",
+    ],
+    "discord.gg": [
+        "discord.com",
+        "discordapp.com",
+        "discordapp.net",
+        "discord.media",
+    ],
+    "roblox.com": [
+        "rbxcdn.com",
+        "robloxlabs.com",
+        "rbx.com",
+    ],
+    "epicgames.com": [
+        "fortnite.com",
+        "epicgames.net",
+        "unrealengine.com",
+    ],
+    "fortnite.com": [
+        "epicgames.com",
+        "epicgames.net",
+        "unrealengine.com",
+    ],
+    "nintendo.com": [
+        "nintendo.net",
+        "nintendonetwork.net",
+        "nintendo-europe.com",
+    ],
+    "spotify.com": [
+        "spoti.fi",
+        "scdn.co",
+        "spotifycdn.com",
+    ],
 }
+
 
 # Regex for standard RFC 1035 / RFC 1123 label: letters, digits, hyphen, not starting/ending with hyphen
 LABEL_REGEX = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")

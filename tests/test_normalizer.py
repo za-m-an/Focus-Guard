@@ -49,4 +49,20 @@ def test_companion_domains():
     assert "googlevideo.com" in companions
     assert "ytimg.com" in companions
 
+    # Xbox companions
+    xbox_comp = get_companion_domains("xbox.com")
+    assert "xboxlive.com" in xbox_comp
+    assert "gamepass.com" in xbox_comp
+
+    # PlayStation companions
+    ps_comp = get_companion_domains("playstation.com")
+    assert "playstation.net" in ps_comp
+    assert "sonyentertainmentnetwork.com" in ps_comp
+
+    # Google Play companions
+    gp_comp = get_companion_domains("play.google.com")
+    assert "android.clients.google.com" in gp_comp
+    assert "market.android.com" in gp_comp
+
     assert get_companion_domains("unknown-site-12345.com") == []
+

@@ -21,7 +21,56 @@ def test_service_registry_contents():
     assert "twitter" in service_ids
     assert "netflix" in service_ids
     assert "twitch" in service_ids
-    assert len(services) >= 8
+    assert "xbox" in service_ids
+    assert "playstation" in service_ids
+    assert "googleplay" in service_ids
+    assert "steam" in service_ids
+    assert "discord" in service_ids
+    assert "roblox" in service_ids
+    assert "epicgames" in service_ids
+    assert "nintendo" in service_ids
+    assert "spotify" in service_ids
+    assert len(services) >= 17
+
+
+def test_gaming_and_store_services():
+    # Xbox
+    xbox = get_service("xbox")
+    assert xbox is not None
+    assert "xbox.com" in xbox.all_domains
+    assert "xboxlive.com" in xbox.all_domains
+    assert "gamepass.com" in xbox.all_domains
+    assert get_service("xboxlive") == xbox
+    assert get_service("gamepass") == xbox
+
+    # PlayStation
+    ps = get_service("playstation")
+    assert ps is not None
+    assert "playstation.com" in ps.all_domains
+    assert "playstation.net" in ps.all_domains
+    assert "sonyentertainmentnetwork.com" in ps.all_domains
+    assert get_service("psn") == ps
+    assert get_service("ps5") == ps
+
+    # Google Play
+    gp = get_service("googleplay")
+    assert gp is not None
+    assert "play.google.com" in gp.all_domains
+    assert "android.clients.google.com" in gp.all_domains
+    assert get_service("gplay") == gp
+    assert get_service("playstore") == gp
+
+    # Steam, Discord, Roblox, Epic, Nintendo, Spotify
+    assert get_service("steam") is not None
+    assert get_service("valve") is not None
+    assert get_service("discord") is not None
+    assert get_service("roblox") is not None
+    assert get_service("epicgames") is not None
+    assert get_service("fortnite") is not None
+    assert get_service("nintendo") is not None
+    assert get_service("switch") is not None
+    assert get_service("spotify") is not None
+
 
 
 
